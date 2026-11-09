@@ -93,7 +93,9 @@ impl MuteHandler {
     }
 
     pub fn discord_to_headset(&self) -> bool {
-        self.discord_direct.load(Ordering::Relaxed) && self.discord_to_headset.load(Ordering::Relaxed)
+        // One-way only: the headset mutes Discord, never the other way round (muting in Discord must
+        // not silence the headset microphone).
+        false
     }
 
     /// Make Discord's mute match the headset's mute state (Direct mode only; no-op otherwise).
