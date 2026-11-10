@@ -15,6 +15,8 @@ pub struct Config {
     pub language: String,
     pub debug_logging: bool,
     pub log_to_console: bool,
+    /// Show desktop notifications with the battery level (on connect / app start / low battery).
+    pub desktop_notifications: bool,
     pub log_to_file: bool,
     pub start_in_compact_mode: bool,
     /// How often (seconds) the headset is asked whether it is switched on.
@@ -177,6 +179,7 @@ impl Default for Config {
             language: "ru".to_string(),
             debug_logging: false,
             log_to_console: false,
+            desktop_notifications: true,
             log_to_file: false,
             start_in_compact_mode: false,
             status_poll_secs: default_status_poll_secs(),

@@ -626,16 +626,17 @@ fn main() {
                                 }
                             }
                         }
-                        if !startup_announced && st.battery_percent > 0 { startup_announced = true; let v = if st.charging { hyperx_ngenuity_open::audio::voice::VoiceEvent::Charging } else { hyperx_ngenuity_open::audio::voice::VoiceEvent::Battery(st.battery_percent) }; hyperx_ngenuity_open::audio::voice::play(v); last_charging = st.charging; }
+                        if !startup_announced && st.battery_percent > 0 { startup_announced = true; let v = if st.charging { hyperx_ngenuity_open::audio::voice::VoiceEvent::Charging } else { hyperx_ngenuity_open::audio::voice::VoiceEvent::Battery(st.battery_percent) }; hyperx_ngenuity_open::audio::voice::play(v); hyperx_ngenuity_open::notifications::notify_startup_battery(st.battery_percent, st.charging); last_charging = st.charging; }
                         {
                             let vcfg = Config::load().unwrap_or_default().voice;
                             if let Some(alert) = low_battery.update(st.battery_percent, st.charging, &vcfg) {
                                 log::warn!("[Device] Battery low: {}% (repeat x{})", alert.percent, alert.repeat);
                                 hyperx_ngenuity_open::audio::voice::play_low_battery(alert.percent, alert.repeat);
+                                hyperx_ngenuity_open::notifications::notify_low_battery(alert.percent);
                             }
                         }
                         if st.charging && !last_charging { hyperx_ngenuity_open::audio::voice::play(hyperx_ngenuity_open::audio::voice::VoiceEvent::Charging); }
-                        if st.battery_percent == 100 && st.charging && !last_full_charge { last_full_charge = true; hyperx_ngenuity_open::audio::voice::play(hyperx_ngenuity_open::audio::voice::VoiceEvent::FullCharge); }
+                        if st.battery_percent == 100 && st.charging && !last_full_charge { last_full_charge = true; hyperx_ngenuity_open::audio::voice::play(hyperx_ngenuity_open::audio::voice::VoiceEvent::FullCharge); hyperx_ngenuity_open::notifications::notify_full_charge(); }
                         if !st.charging { last_full_charge = false; } last_charging = st.charging;
                     } else {
                         consecutive_refresh_failures += 1;

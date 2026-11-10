@@ -422,6 +422,7 @@ fn main() -> anyhow::Result<()> {
                 if let Some(alert) = low_battery.update(device.state.battery_percent, device.state.charging, &vcfg) {
                     let _ = device_tx.send(DeviceEvent::BatteryLow(alert.percent));
                     hyperx_ngenuity_open::audio::voice::play_low_battery(alert.percent, alert.repeat);
+                    hyperx_ngenuity_open::notifications::notify_low_battery(alert.percent);
                     log::warn!("[Device] Battery low: {}% (x{})", alert.percent, alert.repeat);
                 }
             }
