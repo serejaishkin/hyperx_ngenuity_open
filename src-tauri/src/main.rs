@@ -543,9 +543,10 @@ fn main() {
                             if last_mute != Some(m) {
                                 let first = last_mute.is_none();
                                 last_mute = Some(m);
-                                if first { GLOBAL_MUTE_HANDLER.sync_discord_mute(m); } else { GLOBAL_MUTE_HANDLER.on_mute_toggled(m); }
+                                if first { GLOBAL_MUTE_HANDLER.sync_discord_mute(m); } else if hyperx_ngenuity_open::discord::voice::discord_changed_within(2500) && !GLOBAL_MUTE_HANDLER.discord_to_headset() { log::info!("[Mute] headset mute={} right after a Discord-side change: treated as an echo, not a button press", m); } else { GLOBAL_MUTE_HANDLER.on_mute_toggled(m); }
                             }
                         }
+                        if !GLOBAL_MUTE_HANDLER.discord_to_headset() { let _ = hyperx_ngenuity_open::discord::voice::take_discord_change(); }
                         if GLOBAL_MUTE_HANDLER.discord_to_headset() {
                             if let Some(dm) = hyperx_ngenuity_open::discord::voice::take_discord_change() {
                                 if let Some(dev) = manager.active_device() {

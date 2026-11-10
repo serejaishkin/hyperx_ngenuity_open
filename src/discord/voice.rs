@@ -24,6 +24,7 @@ lazy_static::lazy_static! {
     static ref DESIRED: Mutex<Option<bool>> = Mutex::new(None);
     static ref DISCORD_MUTE: Mutex<Option<bool>> = Mutex::new(None);
     static ref LAST_OWN_SET: Mutex<Option<Instant>> = Mutex::new(None);
+    static ref LAST_DISCORD_CHANGE: Mutex<Option<Instant>> = Mutex::new(None);
     static ref STATUS: Mutex<String> = Mutex::new(String::from("выключено"));
 }
 
@@ -48,6 +49,11 @@ pub fn take_discord_change() -> Option<bool> {
         return None;
     }
     *DISCORD_MUTE.lock()
+}
+
+/// True when the user changed mute inside Discord within the last `ms` milliseconds.
+pub fn discord_changed_within(ms: u64) -> bool {
+    LAST_DISCORD_CHANGE.lock().is_some_and(|t| t.elapsed() < Duration::from_millis(ms))
 }
 
 pub fn set_mute(muted: bool) {
@@ -403,6 +409,7 @@ fn session(client_id: &str, secret: &str) -> anyhow::Result<()> {
                             if !own {
                                 log::info!("[DiscordRPC] Discord mute changed in Discord: {}", m);
                                 *DISCORD_MUTE.lock() = Some(m);
+                                *LAST_DISCORD_CHANGE.lock() = Some(Instant::now());
                                 DISCORD_GEN.fetch_add(1, Ordering::SeqCst);
                             }
                         }
