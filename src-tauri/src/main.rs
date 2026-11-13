@@ -343,15 +343,37 @@ fn reset_dock_position(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 /// Remember where the user dragged the pill (debounced; ignores our own automatic moves).
-fn dock_moved(pos: tauri::PhysicalPosition<i32>) {
+/// On Windows the pill snaps back onto the taskbar band, so it can only slide along the taskbar.
+fn dock_moved(app: &tauri::AppHandle, pos: tauri::PhysicalPosition<i32>) {
     if DOCK_AUTO_MOVE.lock().unwrap().is_some_and(|t| t.elapsed() < Duration::from_millis(1200)) { return; }
     let gen = DOCK_SAVE_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    let app = app.clone();
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(600));
+        std::thread::sleep(Duration::from_millis(500));
         if DOCK_SAVE_GEN.load(std::sync::atomic::Ordering::SeqCst) != gen { return; }
+        let (mut x, mut y) = (pos.x, pos.y);
+        if cfg!(windows) {
+            if let (Some(w), Ok(Some(m))) = (app.get_webview_window("dock"), app.primary_monitor()) {
+                let (mp, ms, wa) = (m.position(), m.size(), m.work_area());
+                let ws = w.outer_size().unwrap_or(tauri::PhysicalSize::new(158, 40));
+                let (w_px, h_px) = (ws.width as i32, ws.height as i32);
+                let bottom_gap = (mp.y + ms.height as i32) - (wa.position.y + wa.size.height as i32);
+                let top_gap = wa.position.y - mp.y;
+                let band = if bottom_gap > 0 { Some(wa.position.y + wa.size.height as i32 + (bottom_gap - h_px) / 2) }
+                    else if top_gap > 0 { Some(mp.y + (top_gap - h_px) / 2) } else { None };
+                if let Some(by) = band {
+                    y = by;
+                    x = x.clamp(mp.x, (mp.x + ms.width as i32 - w_px).max(mp.x));
+                    if (x, y) != (pos.x, pos.y) {
+                        *DOCK_AUTO_MOVE.lock().unwrap() = Some(std::time::Instant::now());
+                        let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
+                    }
+                }
+            }
+        }
         if let Ok(mut cfg) = Config::load() {
-            cfg.dock_x = Some(pos.x);
-            cfg.dock_y = Some(pos.y);
+            cfg.dock_x = Some(x);
+            cfg.dock_y = Some(y);
             let _ = cfg.save();
         }
     });
@@ -488,9 +510,10 @@ fn main() {
                 main_window.on_window_event(move |event| { if let WindowEvent::CloseRequested { api, .. } = event { api.prevent_close(); let _ = window_for_close.hide(); } });
             }
             if let Some(dock_window) = app.get_webview_window("dock") {
-                dock_window.on_window_event(|event| {
+                let app_for_dock = app_handle.clone();
+                dock_window.on_window_event(move |event| {
                     match event {
-                        WindowEvent::Moved(pos) => dock_moved(*pos),
+                        WindowEvent::Moved(pos) => dock_moved(&app_for_dock, *pos),
                         WindowEvent::CloseRequested { api, .. } => api.prevent_close(),
                         _ => {}
                     }
