@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HyperX NGENUITY Open</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:transparent; overflow:hidden; user-select:none; font-family:"Segoe UI",system-ui,sans-serif; }
+  .pill { height:100%; display:flex; align-items:center; gap:6px; padding:0 8px; border-radius:999px;
+    background:rgba(18,18,22,.94); border:1px solid rgba(255,255,255,.16); color:#fff; }
+  .pill button { width:22px; height:22px; flex:0 0 auto; border:0; border-radius:50%; background:transparent; color:#ddd; cursor:pointer; font-size:14px; line-height:1; padding:0; }
+  .pill button:hover { background:rgba(255,255,255,.14); color:#fff; }
+  .mid { flex:1; display:flex; align-items:center; justify-content:center; gap:6px; height:100%; cursor:grab; }
+  .bat { position:relative; width:26px; height:13px; border:1.6px solid #cfcfcf; border-radius:3px; padding:1.5px; }
+  .bat::after { content:""; position:absolute; right:-4px; top:3px; width:2.5px; height:5px; background:#cfcfcf; border-radius:0 1px 1px 0; }
+  .fill { height:100%; width:0; border-radius:1px; background:#35d07f; transition:width .25s, background .25s; }
+  .bolt { position:absolute; inset:0; display:none; align-items:center; justify-content:center; font-size:10px; color:#fff; text-shadow:0 0 2px #000; }
+  .charging .bolt { display:flex; }
+  .pct { font-size:13px; font-weight:600; min-width:36px; text-align:left; }
+  .off .pct { color:#888; } .off .bat { border-color:#666; } .off .bat::after { background:#666; }
+</style>
+</head>
+<body>
+<div class="pill" id="pill" data-tauri-drag-region>
+  <button id="btn-compact" title="">▣</button>
+  <div class="mid" id="mid" data-tauri-drag-region>
+    <div class="bat" data-tauri-drag-region><div class="fill" id="fill"></div><div class="bolt" id="bolt">⚡</div></div>
+    <span class="pct" id="pct" data-tauri-drag-region>—</span>
+  </div>
+  <button id="btn-open" title="">⚙</button>
+</div>
+<script src="lang.js"></script>
+<script>
+const { invoke } = window.__TAURI__.core;
+const listen = window.__TAURI__.event ? window.__TAURI__.event.listen : window.__TAURI__.core.listen;
+const $ = (id) => document.getElementById(id);
+function tr(key) { const l = window.__currentLang || 'ru'; return window.I18N?.[l]?.[key] ?? window.I18N?.ru?.[key] ?? key; }
+function color(p) { return p > 50 ? '#35d07f' : p > 20 ? '#f0b429' : '#ef4444'; }
+function update(st) {
+  const on = !!st?.connected && Number(st?.battery_percent) > 0;
+  const p = Math.max(0, Math.min(100, Number(st?.battery_percent ?? 0)));
+  $('pill').classList.toggle('off', !on);
+  $('pill').classList.toggle('charging', on && !!st?.charging);
+  $('fill').style.width = on ? p + '%' : '0%';
+  $('fill').style.background = on && st.charging ? '#35d07f' : color(p);
+  $('pct').textContent = on ? p + '%' : '—';
+}
+function tips() { $('btn-compact').title = tr('dock.compact'); $('btn-open').title = tr('dock.settings'); }
+$('btn-compact').addEventListener('click', () => invoke('open_compact_window').catch(() => {}));
+$('btn-open').addEventListener('click', () => invoke('show_main_window_cmd').catch(() => {}));
+async function syncLanguage() {
+  try {
+    const c = await invoke('get_config'); const lang = c.language || 'ru';
+    if (lang !== window.__currentLang) { window.__currentLang = lang; tips(); }
+  } catch (e) {}
+}
+tips(); syncLanguage(); setInterval(syncLanguage, 3000);
+invoke('get_device_state').then(update).catch(() => {});
+listen('device-state', e => update(e.payload));
+listen('device-disconnected', () => update({ connected: false }));
+</script>
+</body>
+</html>
