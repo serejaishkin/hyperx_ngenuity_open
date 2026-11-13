@@ -185,7 +185,7 @@ impl Default for Config {
             debug_logging: false,
             log_to_console: false,
             desktop_notifications: true,
-            taskbar_widget: true,
+            taskbar_widget: false,
             dock_x: None,
             dock_y: None,
             log_to_file: false,

@@ -289,22 +289,34 @@ fn position_dock(app: &tauri::AppHandle) {
     let sf = m.scale_factor();
     let bottom_gap = (mp.y + ms.height as i32) - (wa.position.y + wa.size.height as i32);
     let top_gap = wa.position.y - mp.y;
-    // Leave room for the system tray / clock on the right; the user can drag the pill anywhere.
-    let x = mp.x + ms.width as i32 - w_px - (sf * 260.0) as i32;
-    let y = if bottom_gap > 0 {
-        wa.position.y + wa.size.height as i32 + (bottom_gap - h_px) / 2
-    } else if top_gap > 0 {
-        mp.y + (top_gap - h_px) / 2
+    let margin = (sf * 8.0) as i32;
+    let (x, y);
+    if cfg!(windows) {
+        // Leave room for the system tray / clock on the right; the user can drag the pill anywhere.
+        x = mp.x + ms.width as i32 - w_px - (sf * 260.0) as i32;
+        y = if bottom_gap > 0 {
+            wa.position.y + wa.size.height as i32 + (bottom_gap - h_px) / 2
+        } else if top_gap > 0 {
+            mp.y + (top_gap - h_px) / 2
+        } else {
+            // auto-hidden taskbar: sit just above the bottom edge
+            mp.y + ms.height as i32 - h_px - (sf * 6.0) as i32
+        };
     } else {
-        // auto-hidden taskbar: sit just above the bottom edge
-        mp.y + ms.height as i32 - h_px - (sf * 6.0) as i32
-    };
+        // macOS menu bar / Linux panel cannot be drawn over: sit in the free corner next to it.
+        x = wa.position.x + wa.size.width as i32 - w_px - margin;
+        y = if bottom_gap > 0 && top_gap <= 0 {
+            wa.position.y + wa.size.height as i32 - h_px - margin
+        } else {
+            wa.position.y + margin
+        };
+    }
     let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
 }
 
 fn apply_dock(app: &tauri::AppHandle) {
     let Some(w) = app.get_webview_window("dock") else { return; };
-    let enabled = cfg!(windows) && Config::load().map(|c| c.taskbar_widget).unwrap_or(true);
+    let enabled = Config::load().map(|c| c.taskbar_widget).unwrap_or(false);
     if enabled {
         position_dock(app);
         let _ = w.set_always_on_top(true);

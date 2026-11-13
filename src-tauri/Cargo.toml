@@ -1,6 +1,6 @@
 [package]
 name = "hyperx-ngenuity-open-tauri"
-version = "0.2.42"
+version = "0.2.43"
 edition = "2021"
 
 [workspace]
@@ -10,7 +10,7 @@ tauri-build = { version = "2.0.0-rc", features = [] }
 
 [dependencies]
 hyperx-ngenuity-open = { path = ".." }
-tauri = { version = "2.0.0-rc", features = ["tray-icon", "image-png"] }
+tauri = { version = "2.0.0-rc", features = ["tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-updater = "2.0.0-rc"
 tauri-plugin-dialog = "2.0.0-rc"
 tauri-plugin-autostart = "2.0.0-rc"
