@@ -17,6 +17,11 @@ pub struct Config {
     pub log_to_console: bool,
     /// Show desktop notifications with the battery level (on connect / app start / low battery).
     pub desktop_notifications: bool,
+    /// Small always-on-top battery pill over the Windows taskbar.
+    pub taskbar_widget: bool,
+    /// Saved position of the pill (physical pixels) after the user dragged it.
+    pub dock_x: Option<i32>,
+    pub dock_y: Option<i32>,
     pub log_to_file: bool,
     pub start_in_compact_mode: bool,
     /// How often (seconds) the headset is asked whether it is switched on.
@@ -180,6 +185,9 @@ impl Default for Config {
             debug_logging: false,
             log_to_console: false,
             desktop_notifications: true,
+            taskbar_widget: true,
+            dock_x: None,
+            dock_y: None,
             log_to_file: false,
             start_in_compact_mode: false,
             status_poll_secs: default_status_poll_secs(),

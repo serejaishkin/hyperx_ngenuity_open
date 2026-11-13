@@ -269,6 +269,82 @@ fn get_current_keybind() -> Option<String> {
     GLOBAL_MUTE_HANDLER.get_keybind()
 }
 
+
+// ---- Taskbar pill ("dock"): small always-on-top window with the battery level ----
+static DOCK_AUTO_MOVE: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+static DOCK_SAVE_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn position_dock(app: &tauri::AppHandle) {
+    let Some(w) = app.get_webview_window("dock") else { return; };
+    let cfg = Config::load().unwrap_or_default();
+    *DOCK_AUTO_MOVE.lock().unwrap() = Some(std::time::Instant::now());
+    if let (Some(x), Some(y)) = (cfg.dock_x, cfg.dock_y) {
+        let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
+        return;
+    }
+    let Ok(Some(m)) = app.primary_monitor() else { return; };
+    let (mp, ms, wa) = (m.position(), m.size(), m.work_area());
+    let ws = w.outer_size().unwrap_or(tauri::PhysicalSize::new(158, 40));
+    let (w_px, h_px) = (ws.width as i32, ws.height as i32);
+    let sf = m.scale_factor();
+    let bottom_gap = (mp.y + ms.height as i32) - (wa.position.y + wa.size.height as i32);
+    let top_gap = wa.position.y - mp.y;
+    // Leave room for the system tray / clock on the right; the user can drag the pill anywhere.
+    let x = mp.x + ms.width as i32 - w_px - (sf * 260.0) as i32;
+    let y = if bottom_gap > 0 {
+        wa.position.y + wa.size.height as i32 + (bottom_gap - h_px) / 2
+    } else if top_gap > 0 {
+        mp.y + (top_gap - h_px) / 2
+    } else {
+        // auto-hidden taskbar: sit just above the bottom edge
+        mp.y + ms.height as i32 - h_px - (sf * 6.0) as i32
+    };
+    let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
+}
+
+fn apply_dock(app: &tauri::AppHandle) {
+    let Some(w) = app.get_webview_window("dock") else { return; };
+    let enabled = cfg!(windows) && Config::load().map(|c| c.taskbar_widget).unwrap_or(true);
+    if enabled {
+        position_dock(app);
+        let _ = w.set_always_on_top(true);
+        let _ = w.show();
+    } else {
+        let _ = w.hide();
+    }
+}
+
+#[tauri::command]
+fn apply_dock_cmd(app: tauri::AppHandle) -> Result<(), String> {
+    apply_dock(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn reset_dock_position(app: tauri::AppHandle) -> Result<(), String> {
+    let mut cfg = Config::load().unwrap_or_default();
+    cfg.dock_x = None;
+    cfg.dock_y = None;
+    cfg.save().map_err(|e| e.to_string())?;
+    apply_dock(&app);
+    Ok(())
+}
+
+/// Remember where the user dragged the pill (debounced; ignores our own automatic moves).
+fn dock_moved(pos: tauri::PhysicalPosition<i32>) {
+    if DOCK_AUTO_MOVE.lock().unwrap().is_some_and(|t| t.elapsed() < Duration::from_millis(1200)) { return; }
+    let gen = DOCK_SAVE_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(600));
+        if DOCK_SAVE_GEN.load(std::sync::atomic::Ordering::SeqCst) != gen { return; }
+        if let Ok(mut cfg) = Config::load() {
+            cfg.dock_x = Some(pos.x);
+            cfg.dock_y = Some(pos.y);
+            let _ = cfg.save();
+        }
+    });
+}
+
 /// Compact is a configured Tauri window. Never create a second WebView for it.
 #[tauri::command]
 fn open_compact_window(app: tauri::AppHandle) -> Result<(), String> {
@@ -399,6 +475,16 @@ fn main() {
                 let window_for_close = main_window.clone();
                 main_window.on_window_event(move |event| { if let WindowEvent::CloseRequested { api, .. } = event { api.prevent_close(); let _ = window_for_close.hide(); } });
             }
+            if let Some(dock_window) = app.get_webview_window("dock") {
+                dock_window.on_window_event(|event| {
+                    match event {
+                        WindowEvent::Moved(pos) => dock_moved(*pos),
+                        WindowEvent::CloseRequested { api, .. } => api.prevent_close(),
+                        _ => {}
+                    }
+                });
+            }
+            apply_dock(&app_handle);
             if let Some(compact_window) = app.get_webview_window("compact") {
                 let app_for_close = app_handle.clone();
                 compact_window.on_window_event(move |event| { if let WindowEvent::CloseRequested { api, .. } = event { api.prevent_close(); show_main_window(&app_for_close); } });
@@ -678,7 +764,7 @@ fn main() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_device_state, get_connected_devices, select_device, get_config, save_config, get_per_device_config, save_per_device_config, set_custom_voice_dir, upload_voice_file, get_tray_config, save_tray_config, get_autostart_enabled, set_autostart_enabled, check_battery_voice, test_voice, get_audio_levels, set_volume, set_mic_volume, toggle_system_mic_mute, toggle_system_output_mute, play_pause, apply_eq, eq_backend_status, toggle_mute, set_sidetone, set_voice_prompts, set_auto_shutdown, set_mute_button_mode, get_current_keybind, get_discord_status, open_url, open_compact_window, show_main_window_cmd, get_audio_devices, get_default_audio_devices, set_default_output_device, set_default_input_device, switch_to_fallback_audio])
+        .invoke_handler(tauri::generate_handler![get_device_state, get_connected_devices, select_device, get_config, save_config, get_per_device_config, save_per_device_config, set_custom_voice_dir, upload_voice_file, get_tray_config, save_tray_config, get_autostart_enabled, set_autostart_enabled, check_battery_voice, test_voice, get_audio_levels, set_volume, set_mic_volume, toggle_system_mic_mute, toggle_system_output_mute, play_pause, apply_eq, eq_backend_status, toggle_mute, set_sidetone, set_voice_prompts, set_auto_shutdown, set_mute_button_mode, get_current_keybind, get_discord_status, open_url, open_compact_window, show_main_window_cmd, apply_dock_cmd, reset_dock_position, get_audio_devices, get_default_audio_devices, set_default_output_device, set_default_input_device, switch_to_fallback_audio])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
