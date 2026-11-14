@@ -326,11 +326,14 @@ fn position_dock(app: &tauri::AppHandle) {
 
 fn apply_dock(app: &tauri::AppHandle) {
     let Some(w) = app.get_webview_window("dock") else { return; };
-    let enabled = Config::load().map(|c| c.taskbar_widget).unwrap_or(false);
+    let cfg = Config::load().unwrap_or_default();
+    let enabled = cfg.taskbar_widget;
+    log::info!("[Dock] apply: enabled={} style={} saved_pos={:?}", enabled, cfg.dock_style, (cfg.dock_x, cfg.dock_y));
     if enabled {
         position_dock(app);
         let _ = w.set_always_on_top(true);
-        let _ = w.show();
+        if let Err(e) = w.show() { log::warn!("[Dock] show failed: {}", e); }
+        log::info!("[Dock] shown at {:?}, size {:?}", w.outer_position().ok(), w.outer_size().ok());
     } else {
         let _ = w.hide();
     }
