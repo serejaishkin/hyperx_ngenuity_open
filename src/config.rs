@@ -19,6 +19,8 @@ pub struct Config {
     pub desktop_notifications: bool,
     /// Small always-on-top battery pill over the Windows taskbar.
     pub taskbar_widget: bool,
+    /// "battery" (battery glyph + %), "number" (just the percent) or "full" (with buttons).
+    pub dock_style: String,
     /// Saved position of the pill (physical pixels) after the user dragged it.
     pub dock_x: Option<i32>,
     pub dock_y: Option<i32>,
@@ -186,6 +188,7 @@ impl Default for Config {
             log_to_console: false,
             desktop_notifications: true,
             taskbar_widget: false,
+            dock_style: "battery".to_string(),
             dock_x: None,
             dock_y: None,
             log_to_file: false,
@@ -250,7 +253,8 @@ impl Config {
     }
 
     pub fn load() -> anyhow::Result<Self> {
-        let content = std::fs::read_to_string(Self::path())?;
+        let _guard = CONFIG_IO.lock().unwrap_or_else(|e| e.into_inner());
+        let content = read_with_retry(&Self::path())?;
         match toml::from_str(&content) {
             Ok(c) => Ok(c),
             Err(e) => {
@@ -264,8 +268,8 @@ impl Config {
     }
 
     pub fn save(&self) -> anyhow::Result<()> {
-        std::fs::write(Self::path(), toml::to_string_pretty(self)?)?;
-        Ok(())
+        let _guard = CONFIG_IO.lock().unwrap_or_else(|e| e.into_inner());
+        write_atomic(&Self::path(), toml::to_string_pretty(self)?.as_bytes())
     }
 
     pub fn get_per_device(&self, device_id: &str) -> Option<&PerDeviceConfig> {
@@ -279,6 +283,48 @@ impl Config {
     pub fn effective_audio(&self, device_id: &str) -> AudioConfig {
         self.per_device.get(device_id).and_then(|p| p.audio.clone()).unwrap_or_else(|| self.audio.clone())
     }
+}
+
+/// Serializes config reads/writes inside the process (several threads poll and save the config).
+static CONFIG_IO: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn retry<T>(mut op: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+    let mut last = None;
+    for attempt in 0..8 {
+        match op() {
+            Ok(v) => return Ok(v),
+            Err(e) => {
+                // On Windows an antivirus scan or another process can hold the file for a moment
+                // ("Access is denied", os error 5 / sharing violation 32): wait and try again.
+                last = Some(e);
+                std::thread::sleep(std::time::Duration::from_millis(40 * (attempt + 1)));
+            }
+        }
+    }
+    Err(last.unwrap())
+}
+
+fn read_with_retry(path: &std::path::Path) -> std::io::Result<String> {
+    retry(|| std::fs::read_to_string(path))
+}
+
+/// Write to a temp file next to the target, then replace the target; falls back to a direct write.
+pub fn write_atomic(path: &std::path::Path, data: &[u8]) -> anyhow::Result<()> {
+    if let Ok(meta) = std::fs::metadata(path) {
+        let mut perms = meta.permissions();
+        if perms.readonly() {
+            #[allow(clippy::permissions_set_readonly_false)]
+            perms.set_readonly(false);
+            let _ = std::fs::set_permissions(path, perms);
+        }
+    }
+    let tmp = path.with_extension("toml.tmp");
+    if std::fs::write(&tmp, data).is_ok() && retry(|| std::fs::rename(&tmp, path)).is_ok() {
+        return Ok(());
+    }
+    let _ = std::fs::remove_file(&tmp);
+    retry(|| std::fs::write(path, data))
+        .map_err(|e| anyhow::anyhow!("cannot write {}: {}", path.display(), e))
 }
 
 fn default_true() -> bool {

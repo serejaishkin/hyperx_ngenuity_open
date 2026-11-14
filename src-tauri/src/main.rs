@@ -274,9 +274,19 @@ fn get_current_keybind() -> Option<String> {
 static DOCK_AUTO_MOVE: Mutex<Option<std::time::Instant>> = Mutex::new(None);
 static DOCK_SAVE_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+fn dock_size(style: &str) -> (f64, f64) {
+    match style {
+        "full" => (158.0, 40.0),
+        "number" => (56.0, 28.0),
+        _ => (84.0, 28.0),
+    }
+}
+
 fn position_dock(app: &tauri::AppHandle) {
     let Some(w) = app.get_webview_window("dock") else { return; };
     let cfg = Config::load().unwrap_or_default();
+    let (lw, lh) = dock_size(&cfg.dock_style);
+    let _ = w.set_size(tauri::LogicalSize::new(lw, lh));
     *DOCK_AUTO_MOVE.lock().unwrap() = Some(std::time::Instant::now());
     if let (Some(x), Some(y)) = (cfg.dock_x, cfg.dock_y) {
         let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
@@ -284,7 +294,7 @@ fn position_dock(app: &tauri::AppHandle) {
     }
     let Ok(Some(m)) = app.primary_monitor() else { return; };
     let (mp, ms, wa) = (m.position(), m.size(), m.work_area());
-    let ws = w.outer_size().unwrap_or(tauri::PhysicalSize::new(158, 40));
+    let ws = w.outer_size().unwrap_or(tauri::PhysicalSize::new(84, 28));
     let (w_px, h_px) = (ws.width as i32, ws.height as i32);
     let sf = m.scale_factor();
     let bottom_gap = (mp.y + ms.height as i32) - (wa.position.y + wa.size.height as i32);
@@ -355,7 +365,7 @@ fn dock_moved(app: &tauri::AppHandle, pos: tauri::PhysicalPosition<i32>) {
         if cfg!(windows) {
             if let (Some(w), Ok(Some(m))) = (app.get_webview_window("dock"), app.primary_monitor()) {
                 let (mp, ms, wa) = (m.position(), m.size(), m.work_area());
-                let ws = w.outer_size().unwrap_or(tauri::PhysicalSize::new(158, 40));
+                let ws = w.outer_size().unwrap_or(tauri::PhysicalSize::new(84, 28));
                 let (w_px, h_px) = (ws.width as i32, ws.height as i32);
                 let bottom_gap = (mp.y + ms.height as i32) - (wa.position.y + wa.size.height as i32);
                 let top_gap = wa.position.y - mp.y;

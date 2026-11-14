@@ -19,9 +19,14 @@
   .charging .bolt { display:flex; }
   .pct { font-size:13px; font-weight:600; min-width:36px; text-align:left; }
   .off .pct { color:#888; } .off .bat { border-color:#666; } .off .bat::after { background:#666; }
+  body:not(.s-full) .pill button { display:none; }
+  body:not(.s-full) .pill { padding:0 6px; gap:0; }
+  body.s-number .bat { display:none; }
+  body.s-number .pct { text-align:center; min-width:0; font-size:14px; }
+  body.s-battery .pct { min-width:30px; }
 </style>
 </head>
-<body>
+<body class="s-battery">
 <div class="pill" id="pill" data-tauri-drag-region>
   <button id="btn-compact" title="">▣</button>
   <div class="mid" id="mid" data-tauri-drag-region>
@@ -36,8 +41,10 @@ const { invoke } = window.__TAURI__.core;
 const listen = window.__TAURI__.event ? window.__TAURI__.event.listen : window.__TAURI__.core.listen;
 const $ = (id) => document.getElementById(id);
 function tr(key) { const l = window.__currentLang || 'ru'; return window.I18N?.[l]?.[key] ?? window.I18N?.ru?.[key] ?? key; }
+let lastState = null;
 function color(p) { return p > 50 ? '#35d07f' : p > 20 ? '#f0b429' : '#ef4444'; }
 function update(st) {
+  lastState = st;
   const on = !!st?.connected && Number(st?.battery_percent) > 0;
   const p = Math.max(0, Math.min(100, Number(st?.battery_percent ?? 0)));
   $('pill').classList.toggle('off', !on);
@@ -45,6 +52,7 @@ function update(st) {
   $('fill').style.width = on ? p + '%' : '0%';
   $('fill').style.background = on && st.charging ? '#35d07f' : color(p);
   $('pct').textContent = on ? p + '%' : '—';
+  $('pct').style.color = on ? (st.charging ? '#35d07f' : color(p)) : '';
 }
 function tips() { $('btn-compact').title = tr('dock.compact'); $('btn-open').title = tr('dock.settings'); }
 $('btn-compact').addEventListener('click', () => invoke('open_compact_window').catch(() => {}));
@@ -53,9 +61,12 @@ async function syncLanguage() {
   try {
     const c = await invoke('get_config'); const lang = c.language || 'ru';
     if (lang !== window.__currentLang) { window.__currentLang = lang; tips(); }
+    const st = ['battery', 'number', 'full'].includes(c.dock_style) ? c.dock_style : 'battery';
+    document.body.className = 's-' + st;
   } catch (e) {}
 }
-tips(); syncLanguage(); setInterval(syncLanguage, 3000);
+$('pill').addEventListener('dblclick', () => invoke('show_main_window_cmd').catch(() => {}));
+tips(); syncLanguage(); setInterval(syncLanguage, 1500);
 invoke('get_device_state').then(update).catch(() => {});
 listen('device-state', e => update(e.payload));
 listen('device-disconnected', () => update({ connected: false }));

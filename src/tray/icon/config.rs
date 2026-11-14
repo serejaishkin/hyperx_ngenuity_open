@@ -231,7 +231,6 @@ impl TrayIconConfig {
         let mut cfg = self.clone();
         cfg.sanitize();
         let content = toml::to_string_pretty(&cfg)?;
-        std::fs::write(path, content)?;
-        Ok(())
+        crate::config::write_atomic(path.as_ref(), content.as_bytes())
     }
 }
