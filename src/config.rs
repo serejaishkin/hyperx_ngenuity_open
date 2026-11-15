@@ -19,7 +19,7 @@ pub struct Config {
     pub desktop_notifications: bool,
     /// Small always-on-top battery pill over the Windows taskbar.
     pub taskbar_widget: bool,
-    /// "battery" (battery glyph + %), "number" (just the percent) or "full" (with buttons).
+    /// "icon" (headphones + %) or "number" (just the percent).
     pub dock_style: String,
     /// Saved position of the pill (physical pixels) after the user dragged it.
     pub dock_x: Option<i32>,
@@ -188,7 +188,7 @@ impl Default for Config {
             log_to_console: false,
             desktop_notifications: true,
             taskbar_widget: false,
-            dock_style: "battery".to_string(),
+            dock_style: "icon".to_string(),
             dock_x: None,
             dock_y: None,
             log_to_file: false,
@@ -244,12 +244,48 @@ impl Default for Config {
     }
 }
 
+/// Folder for config, logs and tokens: next to the exe when that folder is writable (portable use),
+/// otherwise a per-user folder (an install under `C:\Program Files` is read-only for normal users,
+/// which made saving the settings fail with "Access is denied").
+pub fn data_dir() -> PathBuf {
+    static DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    DIR.get_or_init(|| {
+        let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.to_path_buf()));
+        if let Some(dir) = &exe_dir {
+            let probe = dir.join(".write_test");
+            if std::fs::write(&probe, b"x").is_ok() {
+                let _ = std::fs::remove_file(&probe);
+                return dir.clone();
+            }
+        }
+        let base = if cfg!(windows) {
+            std::env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("HyperHeadsetv2"))
+        } else if cfg!(target_os = "macos") {
+            std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library/Application Support/HyperX NGENUITY Open"))
+        } else {
+            std::env::var_os("XDG_CONFIG_HOME")
+                .map(|p| PathBuf::from(p).join("hyperx-ngenuity-open"))
+                .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config/hyperx-ngenuity-open")))
+        };
+        let dir = base.unwrap_or_else(std::env::temp_dir);
+        let _ = std::fs::create_dir_all(&dir);
+        // Bring over files an older install left next to the exe.
+        if let Some(old) = &exe_dir {
+            for name in ["config.toml", "tray_icon.toml", "discord_auth.json"] {
+                let (from, to) = (old.join(name), dir.join(name));
+                if from.exists() && !to.exists() {
+                    let _ = std::fs::copy(&from, &to);
+                }
+            }
+        }
+        dir
+    })
+    .clone()
+}
+
 impl Config {
     pub fn path() -> PathBuf {
-        std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.join("config.toml")))
-            .unwrap_or_else(|| PathBuf::from("config.toml"))
+        data_dir().join("config.toml")
     }
 
     pub fn load() -> anyhow::Result<Self> {

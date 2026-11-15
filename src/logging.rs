@@ -33,10 +33,7 @@ pub fn init(config: &Config) {
     builder.filter_level(if config.debug_logging { log::LevelFilter::Debug } else { log::LevelFilter::Info });
 
     let log_to_console = config.log_to_console;
-    let mut log_path = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.join("hyperx-ngenuity-open.log")))
-        .unwrap_or_else(|| std::path::PathBuf::from("hyperx-ngenuity-open.log"));
+    let mut log_path = crate::config::data_dir().join("hyperx-ngenuity-open.log");
     if std::fs::OpenOptions::new().create(true).append(true).open(&log_path).is_err() {
         log_path = std::env::temp_dir().join("hyperx-ngenuity-open.log");
     }

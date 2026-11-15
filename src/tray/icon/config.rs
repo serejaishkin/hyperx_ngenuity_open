@@ -190,10 +190,7 @@ impl TrayIconConfig {
     }
 
     pub fn default_path() -> PathBuf {
-        std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.join("tray_icon.toml")))
-            .unwrap_or_else(|| PathBuf::from("tray_icon.toml"))
+        crate::config::data_dir().join("tray_icon.toml")
     }
 
     pub fn load_or_create() -> Self {

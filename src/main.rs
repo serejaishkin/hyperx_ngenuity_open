@@ -7,10 +7,7 @@ fn setup_logging(config: &hyperx_ngenuity_open::config::Config) {
     // The Windows build has no console, so the log file is always written (next to the exe,
     // falling back to the temp dir) regardless of the saved `log_to_file` setting.
     let log_to_console = config.log_to_console;
-    let mut log_path = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.join("hyperx-ngenuity-open.log")))
-        .unwrap_or_else(|| std::path::PathBuf::from("hyperx-ngenuity-open.log"));
+    let mut log_path = hyperx_ngenuity_open::config::data_dir().join("hyperx-ngenuity-open.log");
     if std::fs::OpenOptions::new().create(true).append(true).open(&log_path).is_err() {
         log_path = std::env::temp_dir().join("hyperx-ngenuity-open.log");
     }
