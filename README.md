@@ -92,6 +92,8 @@ Started as a fork of [HyperHeadset](https://github.com/LennardKittner/HyperHeads
 now developed independently by Sergey Ishkin. MIT license — see [LICENSE](LICENSE) and
 [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt).
 
+The Windows taskbar indicator uses the owner-window technique from [BatteryDock](https://github.com/jorjanion/BatteryDock) (MIT, © 2026 jorjanion).
+
 ---
 
 ## Русский

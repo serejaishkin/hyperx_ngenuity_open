@@ -6,6 +6,8 @@ use std::time::{Duration, Instant};
 use tauri::{Manager, State, Emitter, WindowEvent};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri_plugin_autostart::MacosLauncher;
+#[cfg(windows)]
+mod taskbar_dock;
 use hyperx_ngenuity_open::config::Config;
 use hyperx_ngenuity_open::device::{DeviceState, MultiDeviceManager, DeviceCommand};
 use hyperx_ngenuity_open::audio_switch::AUDIO_SWITCH;
@@ -307,7 +309,16 @@ fn position_dock(app: &tauri::AppHandle) {
     let bottom_gap = (mp.y + ms.height as i32) - (wa.position.y + wa.size.height as i32);
     let top_gap = wa.position.y - mp.y;
     let margin = (sf * 8.0) as i32;
-    // Never sit ON the taskbar / menu bar: the taskbar is itself a top-most window and covers ours.
+    #[cfg(windows)]
+    {
+        if let Some(g) = taskbar_dock::detect() {
+            let (x, y) = taskbar_dock::default_position(&g, w_px, h_px, sf);
+            let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
+            return;
+        }
+    }
+    // Other systems (and no taskbar found): sit in the free corner next to the taskbar / menu bar,
+    // since a plain window would be covered by a top-most taskbar.
     // Use the free corner of the work area next to it (right edge, just above a bottom taskbar).
     let x = wa.position.x + wa.size.width as i32 - w_px - margin;
     let y = if top_gap > 0 && bottom_gap <= 0 {
@@ -327,10 +338,60 @@ fn apply_dock(app: &tauri::AppHandle) {
         position_dock(app);
         let _ = w.set_always_on_top(true);
         if let Err(e) = w.show() { log::warn!("[Dock] show failed: {}", e); }
+        #[cfg(windows)]
+        {
+            if let Ok(h) = w.hwnd() {
+                let hv = h.0 as isize;
+                taskbar_dock::apply_overlay_style(hv);
+                if let Some(g) = taskbar_dock::detect() { taskbar_dock::ensure_above_taskbar(hv, g.taskbar_hwnd); }
+            }
+            start_dock_watcher(app);
+        }
         log::info!("[Dock] shown at {:?}, size {:?}", w.outer_position().ok(), w.outer_size().ok());
     } else {
         let _ = w.hide();
     }
+}
+
+/// Windows: keep the indicator owned by the taskbar (always above it), follow taskbar changes and
+/// step aside while a full-screen game or presentation is running.
+#[cfg(windows)]
+fn start_dock_watcher(app: &tauri::AppHandle) {
+    static STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if STARTED.swap(true, std::sync::atomic::Ordering::SeqCst) { return; }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let mut hidden_for_fullscreen = false;
+        let mut last_default: Option<(i32, i32)> = None;
+        loop {
+            std::thread::sleep(Duration::from_millis(700));
+            let Some(w) = app.get_webview_window("dock") else { continue; };
+            let cfg = Config::load().unwrap_or_default();
+            if !cfg.taskbar_widget { continue; }
+            if taskbar_dock::fullscreen_app_running() {
+                if !hidden_for_fullscreen { let _ = w.hide(); hidden_for_fullscreen = true; }
+                continue;
+            } else if hidden_for_fullscreen {
+                let _ = w.show();
+                hidden_for_fullscreen = false;
+            }
+            let Ok(h) = w.hwnd() else { continue; };
+            let hv = h.0 as isize;
+            let Some(g) = taskbar_dock::detect() else { continue; };
+            taskbar_dock::apply_overlay_style(hv);
+            taskbar_dock::ensure_above_taskbar(hv, g.taskbar_hwnd);
+            if cfg.dock_x.is_none() || cfg.dock_y.is_none() {
+                if let Ok(sz) = w.outer_size() {
+                    let pos = taskbar_dock::default_position(&g, sz.width as i32, sz.height as i32, w.scale_factor().unwrap_or(1.0));
+                    if last_default != Some(pos) {
+                        *DOCK_AUTO_MOVE.lock().unwrap() = Some(std::time::Instant::now());
+                        let _ = w.set_position(tauri::PhysicalPosition::new(pos.0, pos.1));
+                        last_default = Some(pos);
+                    }
+                }
+            }
+        }
+    });
 }
 
 #[tauri::command]

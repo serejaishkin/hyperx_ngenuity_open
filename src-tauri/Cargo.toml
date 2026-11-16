@@ -1,6 +1,6 @@
 [package]
 name = "hyperx-ngenuity-open-tauri"
-version = "0.2.51"
+version = "0.2.52"
 edition = "2021"
 
 [workspace]
@@ -23,6 +23,9 @@ anyhow = "1.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Shell",
     "Win32_System_Com",
     "Win32_Media_Audio",
     "Win32_Media_Audio_Endpoints",

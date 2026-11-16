@@ -434,3 +434,13 @@ zerocopy-derive: 0.8.42, "Apache-2.0 OR BSD-2-Clause OR MIT", by, "Joshua Liebow
 zune-core: 0.5.1, "Apache-2.0 OR MIT OR Zlib", by, "N/A"
 zune-inflate: 0.2.54, "Apache-2.0 OR MIT OR Zlib", by, "N/A"
 zune-jpeg: 0.5.13, "Apache-2.0 OR MIT OR Zlib", by, "caleb <etemesicaleb@gmail.com>"
+
+
+---
+BatteryDock (taskbar overlay technique, src-tauri/src/taskbar_dock.rs)
+MIT License, Copyright (c) 2026 jorjanion
+https://github.com/jorjanion/BatteryDock
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+subject to the conditions of the MIT License (see the project's LICENSE file).
