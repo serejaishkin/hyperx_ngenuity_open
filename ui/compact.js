@@ -29,6 +29,7 @@ function updateCompact(state) {
 }
 
 async function refreshCompact() {
+    if (document.hidden) return;
     try { updateCompact(await invoke('get_device_state')); }
     catch (error) { console.error('get_device_state failed', error); }
 }
@@ -60,6 +61,7 @@ function fill(select, list, current) {
     else if (!list.length) { const o = document.createElement('option'); o.textContent = '—'; select.appendChild(o); }
 }
 async function refreshDevices(force) {
+    if (document.hidden && !force) return;
     try {
         const [list, def] = await Promise.all([invoke('get_audio_devices'), invoke('get_default_audio_devices')]);
         devices = list;
@@ -81,6 +83,7 @@ $('in-c').addEventListener('change', async (e) => {
 });
 
 async function refreshLevels() {
+    if (document.hidden) return;
     try {
         const l = await invoke('get_audio_levels');
         if (document.activeElement !== $('vol-master')) { $('vol-master').value = l.output; $('vol-value').textContent = `${l.output}%`; }

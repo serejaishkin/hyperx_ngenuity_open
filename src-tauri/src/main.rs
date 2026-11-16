@@ -108,7 +108,7 @@ fn save_config(config: Config) -> Result<(), String> {
     res
 }
 #[tauri::command]
-fn get_tray_config() -> Result<TrayIconConfig, String> { Ok(TrayIconConfig::load_or_create()) }
+async fn get_tray_config() -> Result<TrayIconConfig, String> { blocking(TrayIconConfig::load_or_create).await }
 #[tauri::command]
 fn save_tray_config(app: tauri::AppHandle, mut config: TrayIconConfig) -> Result<(), String> {
     log::info!("[Tray] save_tray_config: mode={:?} high.fg={:?} high.outline={:?} medium.fg={:?} low.fg={:?} charging.fg={:?}",
@@ -157,12 +157,18 @@ fn check_battery_voice(state: State<AppState>) -> Result<(), String> {
 }
 #[tauri::command]
 fn test_voice() -> Result<(), String> { hyperx_ngenuity_open::audio::voice::play_test(); Ok(()) }
+/// Heavy calls (COM audio, files, process spawns) must not run on the window's main thread:
+/// plain `fn` commands do, and a slow one freezes the whole UI.
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())
+}
+
 #[tauri::command]
-fn get_audio_levels() -> Result<hyperx_ngenuity_open::system_audio::AudioLevels, String> { hyperx_ngenuity_open::system_audio::get_levels().map_err(|e| e.to_string()) }
+async fn get_audio_levels() -> Result<hyperx_ngenuity_open::system_audio::AudioLevels, String> { blocking(|| hyperx_ngenuity_open::system_audio::get_levels().map_err(|e| e.to_string())).await.and_then(|r| r) }
 #[tauri::command]
-fn set_volume(percent: u8) -> Result<(), String> { hyperx_ngenuity_open::system_audio::set_output(percent).map_err(|e| e.to_string()) }
+async fn set_volume(percent: u8) -> Result<(), String> { blocking(move || hyperx_ngenuity_open::system_audio::set_output(percent).map_err(|e| e.to_string())).await.and_then(|r| r) }
 #[tauri::command]
-fn set_mic_volume(percent: u8) -> Result<(), String> { hyperx_ngenuity_open::system_audio::set_input(percent).map_err(|e| e.to_string()) }
+async fn set_mic_volume(percent: u8) -> Result<(), String> { blocking(move || hyperx_ngenuity_open::system_audio::set_input(percent).map_err(|e| e.to_string())).await.and_then(|r| r) }
 #[tauri::command]
 fn toggle_system_mic_mute() -> Result<(), String> { hyperx_ngenuity_open::system_audio::toggle_mic_mute().map_err(|e| e.to_string()) }
 #[tauri::command]
@@ -170,13 +176,13 @@ fn toggle_system_output_mute() -> Result<(), String> { hyperx_ngenuity_open::sys
 #[tauri::command]
 fn play_pause() -> Result<(), String> { hyperx_ngenuity_open::system_audio::play_pause().map_err(|e| e.to_string()) }
 #[tauri::command]
-fn get_audio_devices() -> Result<Vec<hyperx_ngenuity_open::system_audio::AudioDevice>, String> { hyperx_ngenuity_open::system_audio::get_audio_devices().map_err(|e| e.to_string()) }
+async fn get_audio_devices() -> Result<Vec<hyperx_ngenuity_open::system_audio::AudioDevice>, String> { blocking(|| hyperx_ngenuity_open::system_audio::get_audio_devices().map_err(|e| e.to_string())).await.and_then(|r| r) }
 #[tauri::command]
-fn get_default_audio_devices() -> serde_json::Value {
-    serde_json::json!({
+async fn get_default_audio_devices() -> Result<serde_json::Value, String> {
+    blocking(|| serde_json::json!({
         "output": hyperx_ngenuity_open::system_audio::get_default_output_device().ok(),
         "input": hyperx_ngenuity_open::system_audio::get_default_input_device().ok(),
-    })
+    })).await
 }
 #[tauri::command]
 fn set_default_output_device(device_id: String) -> Result<(), String> { hyperx_ngenuity_open::system_audio::set_default_output_device(&device_id).map_err(|e| e.to_string()) }
@@ -208,7 +214,8 @@ fn apply_eq(bands: [f32; 10]) -> Result<(), String> {
     #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))] { let _ = bands; Err("EQ backend is not implemented for this platform".into()) }
 }
 #[tauri::command]
-fn eq_backend_status() -> serde_json::Value {
+async fn eq_backend_status() -> Result<serde_json::Value, String> { blocking(eq_backend_status_sync).await }
+fn eq_backend_status_sync() -> serde_json::Value {
     #[cfg(target_os = "windows")] { return serde_json::json!({"os":"windows","installed":hyperx_ngenuity_open::audio::windows::is_apo_installed()}); }
     #[cfg(target_os = "linux")] { return serde_json::json!({"os":"linux","installed":hyperx_ngenuity_open::audio::linux::is_installed()}); }
     #[cfg(target_os = "macos")] { return serde_json::json!({"os":"macos","installed":hyperx_ngenuity_open::audio::macos_eqmac::is_installed()}); }

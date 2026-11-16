@@ -194,7 +194,26 @@ impl TrayIconConfig {
     }
 
     pub fn load_or_create() -> Self {
+        // Called on every tray refresh: reuse the parsed config while the file is unchanged.
+        static CACHE: std::sync::Mutex<Option<(std::time::SystemTime, TrayIconConfig)>> = std::sync::Mutex::new(None);
         let path = Self::default_path();
+        let mtime = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+        if let (Some(mt), Ok(guard)) = (mtime, CACHE.lock()) {
+            if let Some((cached_mt, cfg)) = guard.as_ref() {
+                if *cached_mt == mt {
+                    return cfg.clone();
+                }
+            }
+        }
+        let cfg = Self::load_or_create_uncached(&path);
+        if let (Some(mt), Ok(mut guard)) = (std::fs::metadata(&path).and_then(|m| m.modified()).ok(), CACHE.lock()) {
+            *guard = Some((mt, cfg.clone()));
+        }
+        cfg
+    }
+
+    fn load_or_create_uncached(path: &std::path::Path) -> Self {
+        let path = path.to_path_buf();
         if !path.exists() {
             log::info!("[TrayIcon] Config not found, creating default at {:?}", path);
             let cfg = Self::default();

@@ -70,15 +70,20 @@ async function refreshDevices() {
   }
 }
 
-async function refresh() { try { updateBattery(await invoke('get_device_state')); refreshDevices(); } catch (error) { console.error('get_device_state failed', error); } }
+async function refresh() { if (document.hidden) return; try { updateBattery(await invoke('get_device_state')); refreshDevices(); } catch (error) { console.error('get_device_state failed', error); } }
 async function command(name, args = {}) { try { return await invoke(name, args); } catch (error) { console.error(`${name} failed`, error); toast(`${name}: ${error}`); throw error; } }
 
+let audioBusy = false;
 async function refreshAudio() {
+  // skip while the window is hidden/minimized, while a slider is being dragged, or if the last call is still running
+  if (document.hidden || audioBusy || document.activeElement === $('volume') || document.activeElement === $('mic-volume')) return;
+  audioBusy = true;
   try {
     const levels = await invoke('get_audio_levels');
     $('volume').value = levels.output; $('volume-value').textContent = `${levels.output}%`;
     $('mic-volume').value = levels.input; $('mic-value').textContent = `${levels.input}%`;
   } catch (error) { console.debug('System audio levels unavailable:', error); }
+  finally { audioBusy = false; }
 }
 
 async function checkBatteryVoice() {
@@ -686,7 +691,7 @@ if ($('discord-open-portal')) {
 }
 async function refreshDiscordStatus() {
   const el = $('discord-status');
-  if (!el) return;
+  if (!el || document.hidden) return;
   try { el.textContent = await invoke('get_discord_status'); } catch (e) { /* ignore */ }
 }
 setInterval(refreshDiscordStatus, 2000);

@@ -325,19 +325,22 @@ impl Config {
 static CONFIG_IO: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn retry<T>(mut op: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
-    let mut last = None;
-    for attempt in 0..8 {
+    let mut attempt = 0u64;
+    loop {
         match op() {
             Ok(v) => return Ok(v),
             Err(e) => {
-                // On Windows an antivirus scan or another process can hold the file for a moment
-                // ("Access is denied", os error 5 / sharing violation 32): wait and try again.
-                last = Some(e);
-                std::thread::sleep(std::time::Duration::from_millis(40 * (attempt + 1)));
+                // Only a briefly locked file is worth waiting for (Windows: access denied = os error 5,
+                // sharing violation = 32, lock violation = 33). Anything else, e.g. a missing file, fails at once.
+                let locked = e.kind() == std::io::ErrorKind::PermissionDenied || matches!(e.raw_os_error(), Some(5 | 32 | 33));
+                attempt += 1;
+                if !locked || attempt >= 4 {
+                    return Err(e);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(30 * attempt));
             }
         }
     }
-    Err(last.unwrap())
 }
 
 fn read_with_retry(path: &std::path::Path) -> std::io::Result<String> {
