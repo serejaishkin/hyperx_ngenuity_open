@@ -438,23 +438,29 @@ fn ui_state(m: &MultiDeviceManager) -> DeviceState {
 }
 
 /// Redraw the tray icon and tooltip for the given device state (offline icon when the headset is off).
+/// Key of the last tray state pushed to the OS (see update_tray).
+static LAST_TRAY: Mutex<Option<String>> = Mutex::new(None);
+
 fn update_tray(app: &tauri::AppHandle, st: &DeviceState) {
     let Some(tray) = app.tray_by_id("main") else { return; };
     let icon_config = TrayIconConfig::load_or_create();
-    log::debug!("[Tray] update: mode={:?} bat={} charging={} high.fg={:?} high.outline={:?}",
-        icon_config.mode, st.battery_percent, st.charging,
-        icon_config.colors.high.fg, icon_config.colors.high.outline);
     // Headset off / dongle only: show the dedicated offline icon, never the last percent.
     let (pct, chg) = if st.connected { (st.battery_percent, st.charging) } else { (OFFLINE_PERCENT, false) };
-    let (rgba, w, h) = match icon_config.mode {
-        TrayIconMode::Big => generate_big_digits_rgba(pct, chg, &icon_config.for_tray()),
-        TrayIconMode::Battery => generate_battery_gauge_rgba(&icon_config.for_tray(), pct, chg),
-    };
-    if let Err(e) = tray.set_icon(Some(tauri::image::Image::new(&rgba, w, h))) {
-        log::warn!("[Tray] set_icon failed: {}", e);
+    // The headset sends status events several times a second. Re-rendering the icon and pushing it to the
+    // OS each time made the UI stutter, so only touch the tray when something visible changed.
+    let key = format!("{:?}|{}|{}|{}", icon_config, pct, chg, hyperx_ngenuity_open::tr_pick("ru", "en"));
+    let changed = { let mut last = LAST_TRAY.lock().unwrap(); if last.as_deref() == Some(key.as_str()) { false } else { *last = Some(key); true } };
+    if changed {
+        let (rgba, w, h) = match icon_config.mode {
+            TrayIconMode::Big => generate_big_digits_rgba(pct, chg, &icon_config.for_tray()),
+            TrayIconMode::Battery => generate_battery_gauge_rgba(&icon_config.for_tray(), pct, chg),
+        };
+        if let Err(e) = tray.set_icon(Some(tauri::image::Image::new(&rgba, w, h))) {
+            log::warn!("[Tray] set_icon failed: {}", e);
+        }
     }
     let tooltip = if !st.connected { hyperx_ngenuity_open::tr_pick("HyperX NGENUITY Open\nгарнитура выключена", "HyperX NGENUITY Open\nheadset off") } else if st.charging { format!("HyperX NGENUITY Open\n⚡ {}% — {}", st.battery_percent, st.name) } else { format!("HyperX NGENUITY Open\n🔋 {}% — {}", st.battery_percent, st.name) };
-    let _ = tray.set_tooltip(Some(&tooltip));
+    if changed { let _ = tray.set_tooltip(Some(&tooltip)); }
 }
 
 fn publish_disconnected(app: &tauri::AppHandle, state: &Arc<Mutex<DeviceState>>) {
@@ -464,6 +470,7 @@ fn publish_disconnected(app: &tauri::AppHandle, state: &Arc<Mutex<DeviceState>>)
     // Switch to the saved fallback audio devices (restored automatically when the headset returns)
     AUDIO_SWITCH.lock().force_away();
 
+    *LAST_TRAY.lock().unwrap() = None; // the offline icon below replaces whatever update_tray pushed
     if let Some(tray) = app.tray_by_id("main") {
         let icon_config = TrayIconConfig::load_or_create();
         let (rgba, w, h) = match icon_config.mode {
