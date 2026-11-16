@@ -20,7 +20,7 @@ pub struct Config {
     pub desktop_notifications: bool,
     /// Small always-on-top battery pill over the Windows taskbar.
     pub taskbar_widget: bool,
-    /// "icon" (headphones + %) or "number" (just the percent).
+    /// "icon" (headphones + %), "percent" (just 87%) or "digits" (just 87).
     pub dock_style: String,
     /// Saved position of the pill (physical pixels) after the user dragged it.
     pub dock_x: Option<i32>,

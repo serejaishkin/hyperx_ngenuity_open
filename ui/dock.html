@@ -12,7 +12,7 @@
         filter:drop-shadow(0 0 1.5px rgba(0,0,0,.9)); transition:stroke .25s; pointer-events:none; }
   .pct { font-size:15px; font-weight:700; color:var(--c,#cfcfcf); pointer-events:none; letter-spacing:.2px;
          text-shadow:0 0 2px #000, 0 0 3px #000, 0 1px 2px #000; transition:color .25s; }
-  body.s-number svg { display:none; }
+  body.s-percent svg, body.s-digits svg { display:none; }
   body.off { --c:#8a8a8a; }
 </style>
 </head>
@@ -26,19 +26,22 @@ const { invoke } = window.__TAURI__.core;
 const listen = window.__TAURI__.event ? window.__TAURI__.event.listen : window.__TAURI__.core.listen;
 const $ = (id) => document.getElementById(id);
 function color(p) { return p > 50 ? '#35d07f' : p > 20 ? '#f0b429' : '#ef4444'; }
+let lastPct = null;
+function render() { $('pct').textContent = lastPct === null ? '—' : (document.body.classList.contains('s-digits') ? String(lastPct) : lastPct + '%'); }
 function update(st) {
   const on = !!st?.connected && Number(st?.battery_percent) > 0;
   const p = Math.max(0, Math.min(100, Number(st?.battery_percent ?? 0)));
   document.body.classList.toggle('off', !on);
   document.body.style.setProperty('--c', on ? (st.charging ? '#35d07f' : color(p)) : '');
-  $('pct').textContent = on ? p + '%' : '—';
+  lastPct = on ? p : null; render();
 }
 $('row').addEventListener('dblclick', () => invoke('show_main_window_cmd').catch(() => {}));
 async function syncStyle() {
   try {
     const c = await invoke('get_config');
-    document.body.classList.toggle('s-number', c.dock_style === 'number');
-    document.body.classList.toggle('s-icon', c.dock_style !== 'number');
+    const st = c.dock_style === 'digits' ? 'digits' : (c.dock_style === 'percent' || c.dock_style === 'number') ? 'percent' : 'icon';
+    document.body.className = document.body.className.replace(/\bs-\w+/g, '').trim() + ' s-' + st;
+    render();
   } catch (e) {}
 }
 syncStyle(); setInterval(syncStyle, 1500);

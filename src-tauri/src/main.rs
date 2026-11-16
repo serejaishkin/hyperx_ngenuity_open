@@ -283,7 +283,8 @@ static DOCK_SAVE_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU6
 
 fn dock_size(style: &str) -> (f64, f64) {
     match style {
-        "number" => (50.0, 28.0),
+        "digits" => (40.0, 28.0),
+        "percent" => (50.0, 28.0),
         _ => (76.0, 28.0),
     }
 }
@@ -306,27 +307,14 @@ fn position_dock(app: &tauri::AppHandle) {
     let bottom_gap = (mp.y + ms.height as i32) - (wa.position.y + wa.size.height as i32);
     let top_gap = wa.position.y - mp.y;
     let margin = (sf * 8.0) as i32;
-    let (x, y);
-    if cfg!(windows) {
-        // Leave room for the system tray / clock on the right; the user can drag the pill anywhere.
-        x = mp.x + ms.width as i32 - w_px - (sf * 260.0) as i32;
-        y = if bottom_gap > 0 {
-            wa.position.y + wa.size.height as i32 + (bottom_gap - h_px) / 2
-        } else if top_gap > 0 {
-            mp.y + (top_gap - h_px) / 2
-        } else {
-            // auto-hidden taskbar: sit just above the bottom edge
-            mp.y + ms.height as i32 - h_px - (sf * 6.0) as i32
-        };
+    // Never sit ON the taskbar / menu bar: the taskbar is itself a top-most window and covers ours.
+    // Use the free corner of the work area next to it (right edge, just above a bottom taskbar).
+    let x = wa.position.x + wa.size.width as i32 - w_px - margin;
+    let y = if top_gap > 0 && bottom_gap <= 0 {
+        wa.position.y + margin
     } else {
-        // macOS menu bar / Linux panel cannot be drawn over: sit in the free corner next to it.
-        x = wa.position.x + wa.size.width as i32 - w_px - margin;
-        y = if bottom_gap > 0 && top_gap <= 0 {
-            wa.position.y + wa.size.height as i32 - h_px - margin
-        } else {
-            wa.position.y + margin
-        };
-    }
+        wa.position.y + wa.size.height as i32 - h_px - margin
+    };
     let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
 }
 
@@ -361,38 +349,16 @@ fn reset_dock_position(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Remember where the user dragged the pill (debounced; ignores our own automatic moves).
-/// On Windows the pill snaps back onto the taskbar band, so it can only slide along the taskbar.
-fn dock_moved(app: &tauri::AppHandle, pos: tauri::PhysicalPosition<i32>) {
+/// Remember where the user dragged the indicator (debounced; ignores our own automatic moves).
+fn dock_moved(_app: &tauri::AppHandle, pos: tauri::PhysicalPosition<i32>) {
     if DOCK_AUTO_MOVE.lock().unwrap().is_some_and(|t| t.elapsed() < Duration::from_millis(1200)) { return; }
     let gen = DOCK_SAVE_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-    let app = app.clone();
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(500));
         if DOCK_SAVE_GEN.load(std::sync::atomic::Ordering::SeqCst) != gen { return; }
-        let (mut x, mut y) = (pos.x, pos.y);
-        if cfg!(windows) {
-            if let (Some(w), Ok(Some(m))) = (app.get_webview_window("dock"), app.primary_monitor()) {
-                let (mp, ms, wa) = (m.position(), m.size(), m.work_area());
-                let ws = w.outer_size().unwrap_or(tauri::PhysicalSize::new(76, 28));
-                let (w_px, h_px) = (ws.width as i32, ws.height as i32);
-                let bottom_gap = (mp.y + ms.height as i32) - (wa.position.y + wa.size.height as i32);
-                let top_gap = wa.position.y - mp.y;
-                let band = if bottom_gap > 0 { Some(wa.position.y + wa.size.height as i32 + (bottom_gap - h_px) / 2) }
-                    else if top_gap > 0 { Some(mp.y + (top_gap - h_px) / 2) } else { None };
-                if let Some(by) = band {
-                    y = by;
-                    x = x.clamp(mp.x, (mp.x + ms.width as i32 - w_px).max(mp.x));
-                    if (x, y) != (pos.x, pos.y) {
-                        *DOCK_AUTO_MOVE.lock().unwrap() = Some(std::time::Instant::now());
-                        let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
-                    }
-                }
-            }
-        }
         if let Ok(mut cfg) = Config::load() {
-            cfg.dock_x = Some(x);
-            cfg.dock_y = Some(y);
+            cfg.dock_x = Some(pos.x);
+            cfg.dock_y = Some(pos.y);
             let _ = cfg.save();
         }
     });
