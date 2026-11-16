@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 pub use crate::input::MuteButtonMode;
 
@@ -289,13 +290,27 @@ impl Config {
     }
 
     pub fn load() -> anyhow::Result<Self> {
+        // Many threads (device loop, tray, voice, UI commands) read the config several times a second.
+        // Keep the parsed copy in memory and re-read the file only when its modification time changes.
         let _guard = CONFIG_IO.lock().unwrap_or_else(|e| e.into_inner());
-        let content = read_with_retry(&Self::path())?;
-        match toml::from_str(&content) {
-            Ok(c) => Ok(c),
+        let path = Self::path();
+        let mtime = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+        if mtime.is_some() {
+            if let Some((cached_mt, cfg)) = CACHE.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+                if *cached_mt == mtime {
+                    return Ok(cfg.clone());
+                }
+            }
+        }
+        let content = read_with_retry(&path)?;
+        match toml::from_str::<Config>(&content) {
+            Ok(c) => {
+                *CACHE.lock().unwrap_or_else(|e| e.into_inner()) = Some((mtime, c.clone()));
+                Ok(c)
+            }
             Err(e) => {
                 // Keep a copy so a config that fails to parse is never lost when defaults get saved over it.
-                let bad = Self::path().with_extension("toml.bad");
+                let bad = path.with_extension("toml.bad");
                 let _ = std::fs::write(&bad, &content);
                 log::error!("[Config] failed to parse config.toml ({}); copy saved to {:?}", e, bad);
                 Err(e.into())
@@ -305,7 +320,11 @@ impl Config {
 
     pub fn save(&self) -> anyhow::Result<()> {
         let _guard = CONFIG_IO.lock().unwrap_or_else(|e| e.into_inner());
-        write_atomic(&Self::path(), toml::to_string_pretty(self)?.as_bytes())
+        let path = Self::path();
+        write_atomic(&path, toml::to_string_pretty(self)?.as_bytes())?;
+        let mtime = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+        *CACHE.lock().unwrap_or_else(|e| e.into_inner()) = Some((mtime, self.clone()));
+        Ok(())
     }
 
     pub fn get_per_device(&self, device_id: &str) -> Option<&PerDeviceConfig> {
@@ -320,6 +339,9 @@ impl Config {
         self.per_device.get(device_id).and_then(|p| p.audio.clone()).unwrap_or_else(|| self.audio.clone())
     }
 }
+
+/// Parsed copy of config.toml and the file's modification time it was read at.
+static CACHE: Mutex<Option<(Option<std::time::SystemTime>, Config)>> = Mutex::new(None);
 
 /// Serializes config reads/writes inside the process (several threads poll and save the config).
 static CONFIG_IO: std::sync::Mutex<()> = std::sync::Mutex::new(());
