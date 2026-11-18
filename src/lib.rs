@@ -44,3 +44,21 @@ pub fn tr_pick(ru: &str, en: &str) -> String {
         _ => ru.to_string(),
     }
 }
+
+/// Windows: the app used to be registered for autostart under the name "HyperHeadsetv2". After the
+/// rename that entry would start a stale copy. Remove it; returns true when one was found so the caller
+/// can register the current name instead.
+#[cfg(windows)]
+pub fn remove_legacy_autostart() -> bool {
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_SET_VALUE};
+    use winreg::RegKey;
+    match RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags("Software\\Microsoft\\Windows\\CurrentVersion\\Run", KEY_SET_VALUE) {
+        Ok(run) => run.delete_value("HyperHeadsetv2").is_ok(),
+        Err(_) => false,
+    }
+}
+
+#[cfg(not(windows))]
+pub fn remove_legacy_autostart() -> bool {
+    false
+}

@@ -22,6 +22,11 @@ pub struct Config {
     pub taskbar_widget: bool,
     /// "icon" (headphones + %), "percent" (just 87%) or "digits" (just 87).
     pub dock_style: String,
+    /// "floating" (free-standing, drag anywhere) or "taskbar" (Windows: docked on the taskbar).
+    pub dock_mode: String,
+    /// Saved position for the taskbar mode (the floating mode uses dock_x / dock_y).
+    pub dock_tb_x: Option<i32>,
+    pub dock_tb_y: Option<i32>,
     /// Saved position of the pill (physical pixels) after the user dragged it.
     pub dock_x: Option<i32>,
     pub dock_y: Option<i32>,
@@ -190,6 +195,9 @@ impl Default for Config {
             desktop_notifications: true,
             taskbar_widget: false,
             dock_style: "icon".to_string(),
+            dock_mode: "floating".to_string(),
+            dock_tb_x: None,
+            dock_tb_y: None,
             dock_x: None,
             dock_y: None,
             log_to_file: false,

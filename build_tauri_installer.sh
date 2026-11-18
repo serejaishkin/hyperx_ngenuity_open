@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Builds the Tauri (HyperHeadsetv2) installer from scratch and puts it in ./release/.
+# Builds the Tauri (HyperX NGENUITY Open) installer from scratch and puts it in ./release/.
 # Run from Git Bash in the repo root:  ./build_tauri_installer.sh
 set -euo pipefail
 cd "$(dirname "$0")"
 
 VER=$(grep -m1 '^version' src-tauri/Cargo.toml | cut -d'"' -f2)
-echo "== Building HyperHeadsetv2 v$VER =="
+echo "== Building HyperX NGENUITY Open v$VER =="
 
 # Never pick up an installer from an earlier build.
 rm -rf src-tauri/target/release/bundle

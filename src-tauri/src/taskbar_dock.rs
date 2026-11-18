@@ -125,3 +125,16 @@ pub fn fullscreen_app_running() -> bool {
         matches!(SHQueryUserNotificationState(), Ok(s) if s == QUNS_RUNNING_D3D_FULL_SCREEN || s == QUNS_PRESENTATION_MODE)
     }
 }
+
+/// Floating mode: drop the taskbar as owner so the indicator behaves like a normal top-most window.
+pub fn detach_from_taskbar(our_val: isize) {
+    if our_val == 0 {
+        return;
+    }
+    unsafe {
+        let our = HWND(our_val as *mut c_void);
+        if IsWindow(our).as_bool() && GetWindow(our, GW_OWNER).is_ok_and(|o| !o.0.is_null()) {
+            let _ = SetWindowLongPtrW(our, GWLP_HWNDPARENT, 0);
+        }
+    }
+}

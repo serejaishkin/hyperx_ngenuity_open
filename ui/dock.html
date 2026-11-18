@@ -7,7 +7,8 @@
 <style>
   * { box-sizing: border-box; }
   html, body { margin:0; height:100%; overflow:hidden; user-select:none; font-family:"Segoe UI",system-ui,sans-serif; background:rgba(0,0,0,.01); }
-  .row { height:100%; display:flex; align-items:center; justify-content:center; gap:5px; cursor:grab; }
+  .row { height:100%; display:flex; align-items:center; justify-content:center; gap:5px; cursor:grab; border-radius:9px;
+         background:rgba(18,18,22,.78); border:1px solid rgba(255,255,255,.14); }
   svg { width:20px; height:20px; flex:0 0 auto; fill:none; stroke:var(--c,#cfcfcf); stroke-width:2; stroke-linecap:round; stroke-linejoin:round;
         filter:drop-shadow(0 0 1.5px rgba(0,0,0,.9)); transition:stroke .25s; pointer-events:none; }
   .pct { font-size:15px; font-weight:700; color:var(--c,#cfcfcf); pointer-events:none; letter-spacing:.2px;
@@ -25,10 +26,14 @@
 const { invoke } = window.__TAURI__.core;
 const listen = window.__TAURI__.event ? window.__TAURI__.event.listen : window.__TAURI__.core.listen;
 const $ = (id) => document.getElementById(id);
+const dlog = (m) => { try { invoke('dock_log', { msg: String(m) }).catch(() => {}); } catch (e) {} };
+window.addEventListener('error', (e) => dlog('script error: ' + e.message));
+window.addEventListener('unhandledrejection', (e) => dlog('promise error: ' + (e.reason && e.reason.message || e.reason)));
 function color(p) { return p > 50 ? '#35d07f' : p > 20 ? '#f0b429' : '#ef4444'; }
 let lastPct = null;
 function render() { $('pct').textContent = lastPct === null ? '—' : (document.body.classList.contains('s-digits') ? String(lastPct) : lastPct + '%'); }
 function update(st) {
+  if (!window.__dockSeen) { window.__dockSeen = true; dlog('first state: connected=' + st?.connected + ' battery=' + st?.battery_percent); }
   const on = !!st?.connected && Number(st?.battery_percent) > 0;
   const p = Math.max(0, Math.min(100, Number(st?.battery_percent ?? 0)));
   document.body.classList.toggle('off', !on);
@@ -44,6 +49,7 @@ async function syncStyle() {
     render();
   } catch (e) {}
 }
+dlog('page loaded, tauri event api=' + !!window.__TAURI__.event);
 syncStyle(); setInterval(syncStyle, 1500);
 invoke('get_device_state').then(update).catch(() => {});
 listen('device-state', e => update(e.payload));

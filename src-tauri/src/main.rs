@@ -283,6 +283,16 @@ fn get_current_keybind() -> Option<String> {
 static DOCK_AUTO_MOVE: Mutex<Option<std::time::Instant>> = Mutex::new(None);
 static DOCK_SAVE_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// Taskbar docking exists only on Windows; everywhere else the indicator is free-floating.
+fn dock_in_taskbar(cfg: &Config) -> bool {
+    cfg!(windows) && cfg.dock_mode == "taskbar"
+}
+
+/// Saved position for the current mode.
+fn dock_saved_pos(cfg: &Config) -> Option<(i32, i32)> {
+    if dock_in_taskbar(cfg) { cfg.dock_tb_x.zip(cfg.dock_tb_y) } else { cfg.dock_x.zip(cfg.dock_y) }
+}
+
 fn dock_size(style: &str) -> (f64, f64) {
     match style {
         "digits" => (40.0, 28.0),
@@ -297,7 +307,7 @@ fn position_dock(app: &tauri::AppHandle) {
     let (lw, lh) = dock_size(&cfg.dock_style);
     let _ = w.set_size(tauri::LogicalSize::new(lw, lh));
     *DOCK_AUTO_MOVE.lock().unwrap() = Some(std::time::Instant::now());
-    if let (Some(x), Some(y)) = (cfg.dock_x, cfg.dock_y) {
+    if let Some((x, y)) = dock_saved_pos(&cfg) {
         let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
         return;
     }
@@ -311,7 +321,9 @@ fn position_dock(app: &tauri::AppHandle) {
     let margin = (sf * 8.0) as i32;
     #[cfg(windows)]
     {
-        if let Some(g) = taskbar_dock::detect() {
+        if !dock_in_taskbar(&cfg) {
+            // floating mode: fall through to the free-corner placement below
+        } else if let Some(g) = taskbar_dock::detect() {
             let (x, y) = taskbar_dock::default_position(&g, w_px, h_px, sf);
             let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
             return;
@@ -333,7 +345,7 @@ fn apply_dock(app: &tauri::AppHandle) {
     let Some(w) = app.get_webview_window("dock") else { return; };
     let cfg = Config::load().unwrap_or_default();
     let enabled = cfg.taskbar_widget;
-    log::info!("[Dock] apply: enabled={} style={} saved_pos={:?}", enabled, cfg.dock_style, (cfg.dock_x, cfg.dock_y));
+    log::info!("[Dock] apply: enabled={} style={} mode={} saved_pos={:?}", enabled, cfg.dock_style, cfg.dock_mode, dock_saved_pos(&cfg));
     if enabled {
         position_dock(app);
         let _ = w.set_always_on_top(true);
@@ -342,8 +354,12 @@ fn apply_dock(app: &tauri::AppHandle) {
         {
             if let Ok(h) = w.hwnd() {
                 let hv = h.0 as isize;
-                taskbar_dock::apply_overlay_style(hv);
-                if let Some(g) = taskbar_dock::detect() { taskbar_dock::ensure_above_taskbar(hv, g.taskbar_hwnd); }
+                if dock_in_taskbar(&cfg) {
+                    taskbar_dock::apply_overlay_style(hv);
+                    if let Some(g) = taskbar_dock::detect() { taskbar_dock::ensure_above_taskbar(hv, g.taskbar_hwnd); }
+                } else {
+                    taskbar_dock::detach_from_taskbar(hv);
+                }
             }
             start_dock_watcher(app);
         }
@@ -375,12 +391,13 @@ fn start_dock_watcher(app: &tauri::AppHandle) {
                 let _ = w.show();
                 hidden_for_fullscreen = false;
             }
+            if !dock_in_taskbar(&cfg) { continue; }
             let Ok(h) = w.hwnd() else { continue; };
             let hv = h.0 as isize;
             let Some(g) = taskbar_dock::detect() else { continue; };
             taskbar_dock::apply_overlay_style(hv);
             taskbar_dock::ensure_above_taskbar(hv, g.taskbar_hwnd);
-            if cfg.dock_x.is_none() || cfg.dock_y.is_none() {
+            if dock_saved_pos(&cfg).is_none() {
                 if let Ok(sz) = w.outer_size() {
                     let pos = taskbar_dock::default_position(&g, sz.width as i32, sz.height as i32, w.scale_factor().unwrap_or(1.0));
                     if last_default != Some(pos) {
@@ -394,6 +411,12 @@ fn start_dock_watcher(app: &tauri::AppHandle) {
     });
 }
 
+/// Diagnostics from the dock page (what it received / any script error) go to the app log.
+#[tauri::command]
+fn dock_log(msg: String) {
+    log::info!("[DockPage] {}", msg);
+}
+
 #[tauri::command]
 fn apply_dock_cmd(app: tauri::AppHandle) -> Result<(), String> {
     apply_dock(&app);
@@ -405,6 +428,8 @@ fn reset_dock_position(app: tauri::AppHandle) -> Result<(), String> {
     let mut cfg = Config::load().unwrap_or_default();
     cfg.dock_x = None;
     cfg.dock_y = None;
+    cfg.dock_tb_x = None;
+    cfg.dock_tb_y = None;
     cfg.save().map_err(|e| e.to_string())?;
     apply_dock(&app);
     Ok(())
@@ -418,8 +443,8 @@ fn dock_moved(_app: &tauri::AppHandle, pos: tauri::PhysicalPosition<i32>) {
         std::thread::sleep(Duration::from_millis(500));
         if DOCK_SAVE_GEN.load(std::sync::atomic::Ordering::SeqCst) != gen { return; }
         if let Ok(mut cfg) = Config::load() {
-            cfg.dock_x = Some(pos.x);
-            cfg.dock_y = Some(pos.y);
+            if dock_in_taskbar(&cfg) { cfg.dock_tb_x = Some(pos.x); cfg.dock_tb_y = Some(pos.y); }
+            else { cfg.dock_x = Some(pos.x); cfg.dock_y = Some(pos.y); }
             let _ = cfg.save();
         }
     });
@@ -582,6 +607,10 @@ fn main() {
             {
                 use tauri_plugin_autostart::ManagerExt;
                 let al = app.autolaunch();
+                // Renamed app: the old registration (name "HyperHeadsetv2") is removed and replaced by one
+                // under the current name so autostart keeps working and no stale copy is started.
+                let migrated = hyperx_ngenuity_open::remove_legacy_autostart();
+                if migrated { let _ = al.enable(); }
                 if al.is_enabled().unwrap_or(false) {
                     let _ = al.disable();
                     if let Err(e) = al.enable() { log::warn!("[Autostart] re-register failed: {}", e); }
@@ -852,7 +881,7 @@ fn main() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_device_state, get_connected_devices, select_device, get_config, save_config, get_per_device_config, save_per_device_config, set_custom_voice_dir, upload_voice_file, get_tray_config, save_tray_config, get_autostart_enabled, set_autostart_enabled, check_battery_voice, test_voice, get_audio_levels, set_volume, set_mic_volume, toggle_system_mic_mute, toggle_system_output_mute, play_pause, apply_eq, eq_backend_status, toggle_mute, set_sidetone, set_voice_prompts, set_auto_shutdown, set_mute_button_mode, get_current_keybind, get_discord_status, open_url, open_compact_window, show_main_window_cmd, apply_dock_cmd, reset_dock_position, get_audio_devices, get_default_audio_devices, set_default_output_device, set_default_input_device, switch_to_fallback_audio])
+        .invoke_handler(tauri::generate_handler![get_device_state, get_connected_devices, select_device, get_config, save_config, get_per_device_config, save_per_device_config, set_custom_voice_dir, upload_voice_file, get_tray_config, save_tray_config, get_autostart_enabled, set_autostart_enabled, check_battery_voice, test_voice, get_audio_levels, set_volume, set_mic_volume, toggle_system_mic_mute, toggle_system_output_mute, play_pause, apply_eq, eq_backend_status, toggle_mute, set_sidetone, set_voice_prompts, set_auto_shutdown, set_mute_button_mode, get_current_keybind, get_discord_status, open_url, open_compact_window, show_main_window_cmd, apply_dock_cmd, reset_dock_position, dock_log, get_audio_devices, get_default_audio_devices, set_default_output_device, set_default_input_device, switch_to_fallback_audio])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

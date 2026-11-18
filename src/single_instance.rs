@@ -38,6 +38,8 @@ mod imp {
             "hyperx_ngenuity_open.exe".into(),
             "hyperx-ngenuity-open.exe".into(),
             "hyperx-ngenuity-open-tauri.exe".into(),
+            "hyperheadsetv2.exe".into(),
+            "hyperx ngenuity open.exe".into(),
         ];
         if let Some(own) = std::env::current_exe().ok().and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_lowercase())) {
             if !names.contains(&own) {
