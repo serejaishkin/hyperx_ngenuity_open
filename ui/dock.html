@@ -51,9 +51,12 @@ async function syncStyle() {
 }
 dlog('page loaded, tauri event api=' + !!window.__TAURI__.event);
 syncStyle(); setInterval(syncStyle, 1500);
-invoke('get_device_state').then(update).catch(() => {});
-listen('device-state', e => update(e.payload));
-listen('device-disconnected', () => update({ connected: false }));
+const poll = () => invoke('get_device_state').then(update).catch((e) => dlog('get_device_state failed: ' + e));
+poll(); setInterval(poll, 2000); // events can be unavailable; polling keeps the value fresh either way
+try {
+  listen('device-state', e => update(e.payload)).catch(() => {});
+  listen('device-disconnected', () => update({ connected: false })).catch(() => {});
+} catch (e) { dlog('listen unavailable: ' + e); }
 </script>
 </body>
 </html>

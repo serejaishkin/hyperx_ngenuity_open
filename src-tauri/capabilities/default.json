@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permissions for the app windows (main, compact, floating battery indicator)",
+  "windows": ["main", "compact", "dock"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "updater:default",
+    "dialog:default"
+  ]
+}
