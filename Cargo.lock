@@ -2462,7 +2462,7 @@ dependencies = [
 
 [[package]]
 name = "hyperx-ngenuity-open"
-version = "0.2.52"
+version = "0.2.55"
 dependencies = [
  "anyhow",
  "clap 4.6.6",

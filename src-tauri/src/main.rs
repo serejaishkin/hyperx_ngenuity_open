@@ -281,6 +281,8 @@ fn get_current_keybind() -> Option<String> {
 
 // ---- Taskbar pill ("dock"): small always-on-top window with the battery level ----
 static DOCK_AUTO_MOVE: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+/// Bumped on every apply: tells the watcher to recompute the default position (mode / setting changed).
+static DOCK_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DOCK_SAVE_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Taskbar docking exists only on Windows; everywhere else the indicator is free-floating.
@@ -295,9 +297,9 @@ fn dock_saved_pos(cfg: &Config) -> Option<(i32, i32)> {
 
 fn dock_size(style: &str) -> (f64, f64) {
     match style {
-        "digits" => (40.0, 28.0),
-        "percent" => (50.0, 28.0),
-        _ => (76.0, 28.0),
+        "digits" => (48.0, 30.0),
+        "percent" => (64.0, 30.0),
+        _ => (96.0, 30.0),
     }
 }
 
@@ -313,7 +315,7 @@ fn position_dock(app: &tauri::AppHandle) {
     }
     let Ok(Some(m)) = app.primary_monitor() else { return; };
     let (mp, ms, wa) = (m.position(), m.size(), m.work_area());
-    let ws = w.outer_size().unwrap_or(tauri::PhysicalSize::new(76, 28));
+    let ws = w.outer_size().unwrap_or(tauri::PhysicalSize::new(96, 30));
     let (w_px, h_px) = (ws.width as i32, ws.height as i32);
     let sf = m.scale_factor();
     let bottom_gap = (mp.y + ms.height as i32) - (wa.position.y + wa.size.height as i32);
@@ -345,6 +347,7 @@ fn apply_dock(app: &tauri::AppHandle) {
     let Some(w) = app.get_webview_window("dock") else { return; };
     let cfg = Config::load().unwrap_or_default();
     let enabled = cfg.taskbar_widget;
+    DOCK_EPOCH.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     log::info!("[Dock] apply: enabled={} style={} mode={} saved_pos={:?}", enabled, cfg.dock_style, cfg.dock_mode, dock_saved_pos(&cfg));
     if enabled {
         position_dock(app);
@@ -360,6 +363,7 @@ fn apply_dock(app: &tauri::AppHandle) {
                 } else {
                     taskbar_dock::detach_from_taskbar(hv);
                 }
+                position_dock(app); // after the owner/style change, so the new mode's spot is applied
             }
             start_dock_watcher(app);
         }
@@ -379,6 +383,7 @@ fn start_dock_watcher(app: &tauri::AppHandle) {
     std::thread::spawn(move || {
         let mut hidden_for_fullscreen = false;
         let mut last_default: Option<(i32, i32)> = None;
+        let mut seen_epoch = 0u64;
         loop {
             std::thread::sleep(Duration::from_millis(700));
             let Some(w) = app.get_webview_window("dock") else { continue; };
@@ -391,6 +396,8 @@ fn start_dock_watcher(app: &tauri::AppHandle) {
                 let _ = w.show();
                 hidden_for_fullscreen = false;
             }
+            let epoch = DOCK_EPOCH.load(std::sync::atomic::Ordering::SeqCst);
+            if epoch != seen_epoch { seen_epoch = epoch; last_default = None; }
             if !dock_in_taskbar(&cfg) { continue; }
             let Ok(h) = w.hwnd() else { continue; };
             let hv = h.0 as isize;
