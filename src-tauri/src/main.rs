@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{Manager, State, Emitter, WindowEvent};
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{ContextMenu, Menu, MenuItem, PredefinedMenuItem};
 use tauri_plugin_autostart::MacosLauncher;
 #[cfg(windows)]
 mod taskbar_dock;
@@ -424,6 +424,24 @@ fn dock_log(msg: String) {
     log::info!("[DockPage] {}", msg);
 }
 
+/// Right-click menu of the indicator (same actions as the tray menu + hide).
+#[tauri::command]
+fn dock_menu(app: tauri::AppHandle, window: tauri::Window) -> Result<(), String> {
+    let t = |ru: &str, en: &str| hyperx_ngenuity_open::tr_pick(ru, en);
+    let e = |x: tauri::Error| x.to_string();
+    let menu = Menu::new(&app).map_err(e)?;
+    let items = [
+        MenuItem::with_id(&app, "dock_open", t("Открыть", "Open"), true, None::<&str>).map_err(e)?,
+        MenuItem::with_id(&app, "dock_mute", t("Мьют", "Mute"), true, None::<&str>).map_err(e)?,
+        MenuItem::with_id(&app, "dock_compact", t("Компактное окно", "Compact window"), true, None::<&str>).map_err(e)?,
+        MenuItem::with_id(&app, "dock_reset", t("Сбросить позицию", "Reset position"), true, None::<&str>).map_err(e)?,
+        MenuItem::with_id(&app, "dock_hide", t("Скрыть индикатор", "Hide indicator"), true, None::<&str>).map_err(e)?,
+    ];
+    for i in &items { menu.append(i).map_err(e)?; }
+    menu.append(&PredefinedMenuItem::separator(&app).map_err(e)?).map_err(e)?;
+    menu.append(&MenuItem::with_id(&app, "dock_quit", t("Выход", "Quit"), true, None::<&str>).map_err(e)?).map_err(e)?;
+    menu.popup(window).map_err(e)
+}
 #[tauri::command]
 fn apply_dock_cmd(app: tauri::AppHandle) -> Result<(), String> {
     apply_dock(&app);
@@ -569,6 +587,21 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--autostart"])))
         .manage(AppState { device_state: device_state_clone, all_devices: all_devices_clone, device_cmd_tx: device_cmd_tx.clone(), select_device_tx: select_device_tx.clone() })
+        .on_menu_event({ let tx = device_cmd_tx.clone(); move |app, event| {
+            match event.id().as_ref() {
+                "dock_open" => show_main_window(app),
+                "dock_mute" => { let _ = tx.send(DeviceCommand::ToggleMute); }
+                "dock_compact" => { let _ = open_compact_window(app.clone()); }
+                "dock_reset" => { let _ = reset_dock_position(app.clone()); }
+                "dock_hide" => {
+                    if let Ok(mut c) = Config::load() { c.taskbar_widget = false; let _ = c.save(); }
+                    apply_dock(app);
+                    let _ = app.emit("config-changed", ());
+                }
+                "dock_quit" => app.exit(0),
+                _ => {}
+            }
+        } })
         .setup(move |app| {
             let app_handle = app.handle().clone(); let device_state_inner = device_state.clone();
             let menu = Menu::new(&app_handle)?;
@@ -888,7 +921,7 @@ fn main() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_device_state, get_connected_devices, select_device, get_config, save_config, get_per_device_config, save_per_device_config, set_custom_voice_dir, upload_voice_file, get_tray_config, save_tray_config, get_autostart_enabled, set_autostart_enabled, check_battery_voice, test_voice, get_audio_levels, set_volume, set_mic_volume, toggle_system_mic_mute, toggle_system_output_mute, play_pause, apply_eq, eq_backend_status, toggle_mute, set_sidetone, set_voice_prompts, set_auto_shutdown, set_mute_button_mode, get_current_keybind, get_discord_status, open_url, open_compact_window, show_main_window_cmd, apply_dock_cmd, reset_dock_position, dock_log, get_audio_devices, get_default_audio_devices, set_default_output_device, set_default_input_device, switch_to_fallback_audio])
+        .invoke_handler(tauri::generate_handler![get_device_state, get_connected_devices, select_device, get_config, save_config, get_per_device_config, save_per_device_config, set_custom_voice_dir, upload_voice_file, get_tray_config, save_tray_config, get_autostart_enabled, set_autostart_enabled, check_battery_voice, test_voice, get_audio_levels, set_volume, set_mic_volume, toggle_system_mic_mute, toggle_system_output_mute, play_pause, apply_eq, eq_backend_status, toggle_mute, set_sidetone, set_voice_prompts, set_auto_shutdown, set_mute_button_mode, get_current_keybind, get_discord_status, open_url, open_compact_window, show_main_window_cmd, apply_dock_cmd, dock_menu, reset_dock_position, dock_log, get_audio_devices, get_default_audio_devices, set_default_output_device, set_default_input_device, switch_to_fallback_audio])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

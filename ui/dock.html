@@ -40,6 +40,7 @@ function update(st) {
   document.body.style.setProperty('--c', on ? (st.charging ? '#35d07f' : color(p)) : '');
   lastPct = on ? p : null; render();
 }
+document.addEventListener('contextmenu', (e) => { e.preventDefault(); invoke('dock_menu').catch((x) => dlog('dock_menu failed: ' + x)); });
 $('row').addEventListener('dblclick', () => invoke('show_main_window_cmd').catch(() => {}));
 async function syncStyle() {
   try {
