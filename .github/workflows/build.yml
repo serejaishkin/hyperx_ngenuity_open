@@ -1,6 +1,7 @@
 name: Build
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -16,7 +17,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: hyper-headset-windows
-          path: target/release/hyperx-ngenuity-open.exe
+          path: target/release/hyperx_ngenuity_open.exe
 
   build-macos:
     runs-on: macos-latest
@@ -28,7 +29,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: hyper-headset-macos
-          path: target/release/hyperx-ngenuity-open
+          path: target/release/hyperx_ngenuity_open
 
   build-linux:
     runs-on: ubuntu-latest
@@ -42,4 +43,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: hyper-headset-linux
-          path: target/release/hyperx-ngenuity-open
+          path: target/release/hyperx_ngenuity_open
