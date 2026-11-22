@@ -782,191 +782,48 @@ impl HyperXApp {
     }
 
     fn show_settings_tray_icon(&mut self, ui: &mut egui::Ui) {
-        let tr0 = self.i18n.t("Battery indicator (headphones + %):");
-        let tr1 = self.i18n.t("Off");
-        let tr2 = self.i18n.t("Floating");
-        let tr3 = self.i18n.t("On taskbar");
-        let tr4 = self.i18n.t("Digits only");
-        let tr5 = self.i18n.t("Percent only");
-        let tr6 = self.i18n.t("Headphones + %");
-        let tr7 = self.i18n.t("Mode:");
-        let tr8 = self.i18n.t("Big digits (fill the icon, no background)");
-        let tr9 = self.i18n.t("Battery gauge (readable at 16px)");
-        let tr10 = self.i18n.t("Big mode: digits auto-fit the icon and use the status color; Outline is the outline color.");
-        let tr11 = self.i18n.t("Smooth color blend by charge");
         use crate::tray::icon::{generate_tray_icon_rgba, TrayIconMode};
-        ui.heading(self.i18n.t("Tray Icon"));
-        ui.horizontal(|ui| {
-            ui.label(&tr0);
-            let mut sel = if !self.config.taskbar_widget { "off" } else if cfg!(windows) && self.config.dock_mode == "taskbar" { "taskbar" } else { "floating" };
-            let before = sel;
+        let t = |en: &str, ru: &str| self.i18n.pick(en, ru);
+        let tray_cfg_before = self.tray_icon_config.clone();
+
+        // --- Battery indicator (floating / on taskbar) ---
+        section_title(ui, &t("Battery indicator (headphones + %)", "Индикатор заряда (наушники и %)"));
+        let (t_off, t_float, t_task) = (t("Off", "Выключен"), t("Floating", "Плавающий"), t("On taskbar (Windows)", "На панели задач (Windows)"));
+        let mut sel = if !self.config.taskbar_widget { "off" } else if cfg!(windows) && self.config.dock_mode == "taskbar" { "taskbar" } else { "floating" };
+        let before = sel;
+        setting_row_d(ui, &t("Indicator placement", "Расположение индикатора"),
+            &t("Floating — in the screen corner, drag anywhere. On taskbar — next to the tray (Windows).", "Плавающий — в углу экрана, перетаскивается куда угодно. На панели задач — рядом с треем (Windows)."), |ui| {
             egui::ComboBox::from_id_source("dock_mode")
-                .selected_text(match sel { "off" => tr1.as_str(), "taskbar" => tr3.as_str(), _ => tr2.as_str() })
+                .selected_text(match sel { "off" => t_off.as_str(), "taskbar" => t_task.as_str(), _ => t_float.as_str() })
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut sel, "off", &tr1);
-                    ui.selectable_value(&mut sel, "floating", &tr2);
+                    ui.selectable_value(&mut sel, "off", &t_off);
+                    ui.selectable_value(&mut sel, "floating", &t_float);
                     #[cfg(windows)]
-                    ui.selectable_value(&mut sel, "taskbar", &tr3);
+                    ui.selectable_value(&mut sel, "taskbar", &t_task);
                 });
-            if sel != before {
-                self.config.taskbar_widget = sel != "off";
-                if sel != "off" { self.config.dock_mode = sel.to_string(); }
-                self.needs_save = true;
-            }
-            let mut st = self.config.dock_style.clone();
-            egui::ComboBox::from_id_source("dock_style")
-                .selected_text(match st.as_str() { "digits" => tr4.as_str(), "percent" => tr5.as_str(), _ => tr6.as_str() })
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut st, "icon".to_string(), &tr6);
-                    ui.selectable_value(&mut st, "percent".to_string(), &tr5);
-                    ui.selectable_value(&mut st, "digits".to_string(), &tr4);
-                });
-            if st != self.config.dock_style { self.config.dock_style = st; self.needs_save = true; }
+            false
         });
-        ui.separator();
-        ui.horizontal(|ui| {
-            ui.label(&tr7);
-            ui.selectable_value(&mut self.tray_icon_config.mode, TrayIconMode::Big, &tr8);
-            ui.selectable_value(&mut self.tray_icon_config.mode, TrayIconMode::Battery, &tr9);
-        });
-        if self.tray_icon_config.mode == TrayIconMode::Big {
-            ui.small(&tr10);
-            if ui.checkbox(&mut self.tray_icon_config.smooth_colors, &tr11).changed() { self.needs_save = true; }
+        if sel != before {
+            self.config.taskbar_widget = sel != "off";
+            if sel != "off" { self.config.dock_mode = sel.to_string(); }
+            self.needs_save = true;
         }
-        ui.horizontal(|ui| {
-            ui.label(self.i18n.t("Size:"));
-            if ui.add(egui::Slider::new(&mut self.tray_icon_config.size, 16..=512)).changed() { self.needs_save = true; }
+        let (s_icon, s_pct, s_dig) = (t("Headphones + %", "Наушники + %"), t("Percent only", "Только %"), t("Digits only", "Только цифры"));
+        let mut st = self.config.dock_style.clone();
+        setting_row_d(ui, &t("Indicator style", "Стиль индикатора"), &t("Right-click the indicator for its menu", "Правый клик по индикатору открывает меню"), |ui| {
+            egui::ComboBox::from_id_source("dock_style")
+                .selected_text(match st.as_str() { "digits" => s_dig.as_str(), "percent" => s_pct.as_str(), _ => s_icon.as_str() })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut st, "icon".to_string(), &s_icon);
+                    ui.selectable_value(&mut st, "percent".to_string(), &s_pct);
+                    ui.selectable_value(&mut st, "digits".to_string(), &s_dig);
+                });
+            false
         });
-        ui.horizontal(|ui| {
-            ui.label(self.i18n.t("Outline:"));
-            if ui.add(egui::Slider::new(&mut self.tray_icon_config.outline_width, 0..=10)).changed() { self.needs_save = true; }
-        });
+        if st != self.config.dock_style { self.config.dock_style = st; self.needs_save = true; }
 
-        ui.separator();
-        ui.label(self.i18n.t("Colors"));
-
-        ui.group(|ui| {
-            ui.label(self.i18n.t("Charging"));
-            ui.horizontal(|ui| {
-                let mut bg = egui::Color32::from_rgba_premultiplied(self.tray_icon_config.colors.charging.bg[0], self.tray_icon_config.colors.charging.bg[1], self.tray_icon_config.colors.charging.bg[2], self.tray_icon_config.colors.charging.bg[3]);
-                let mut fg = egui::Color32::from_rgba_premultiplied(self.tray_icon_config.colors.charging.fg[0], self.tray_icon_config.colors.charging.fg[1], self.tray_icon_config.colors.charging.fg[2], self.tray_icon_config.colors.charging.fg[3]);
-                let mut outline = egui::Color32::from_rgba_premultiplied(self.tray_icon_config.colors.charging.outline[0], self.tray_icon_config.colors.charging.outline[1], self.tray_icon_config.colors.charging.outline[2], self.tray_icon_config.colors.charging.outline[3]);
-                let mut border = egui::Color32::from_rgba_premultiplied(self.tray_icon_config.colors.charging.border[0], self.tray_icon_config.colors.charging.border[1], self.tray_icon_config.colors.charging.border[2], self.tray_icon_config.colors.charging.border[3]);
-                if egui::color_picker::color_edit_button_srgba(ui, &mut bg, egui::color_picker::Alpha::BlendOrAdditive).changed() {
-                    self.tray_icon_config.colors.charging.bg = [bg.r(), bg.g(), bg.b(), bg.a()];
-                    self.needs_save = true;
-                }
-                ui.label(self.i18n.t("BG"));
-                if egui::color_picker::color_edit_button_srgba(ui, &mut fg, egui::color_picker::Alpha::BlendOrAdditive).changed() {
-                    self.tray_icon_config.colors.charging.fg = [fg.r(), fg.g(), fg.b(), fg.a()];
-                    self.needs_save = true;
-                }
-                ui.label(self.i18n.t("FG"));
-                if egui::color_picker::color_edit_button_srgba(ui, &mut outline, egui::color_picker::Alpha::BlendOrAdditive).changed() {
-                    self.tray_icon_config.colors.charging.outline = [outline.r(), outline.g(), outline.b(), outline.a()];
-                    self.needs_save = true;
-                }
-                ui.label(self.i18n.t("Out"));
-                if egui::color_picker::color_edit_button_srgba(ui, &mut border, egui::color_picker::Alpha::BlendOrAdditive).changed() {
-                    self.tray_icon_config.colors.charging.border = [border.r(), border.g(), border.b(), border.a()];
-                    self.needs_save = true;
-                }
-                ui.label(self.i18n.t("Bdr"));
-            });
-        });
-
-        ui.group(|ui| {
-            ui.label(self.i18n.t("High (>50%)"));
-            ui.horizontal(|ui| {
-                let mut bg = egui::Color32::from_rgba_premultiplied(self.tray_icon_config.colors.high.bg[0], self.tray_icon_config.colors.high.bg[1], self.tray_icon_config.colors.high.bg[2], self.tray_icon_config.colors.high.bg[3]);
-                let mut fg = egui::Color32::from_rgba_premultiplied(self.tray_icon_config.colors.high.fg[0], self.tray_icon_config.colors.high.fg[1], self.tray_icon_config.colors.high.fg[2], self.tray_icon_config.colors.high.fg[3]);
-                let mut outline = egui::Color32::from_rgba_premultiplied(self.tray_icon_config.colors.high.outline[0], self.tray_icon_config.colors.high.outline[1], self.tray_icon_config.colors.high.outline[2], self.tray_icon_config.colors.high.outline[3]);
-                let mut border = egui::Color32::from_rgba_premultiplied(self.tray_icon_config.colors.high.border[0], self.tray_icon_config.colors.high.border[1], self.tray_icon_config.colors.high.border[2], self.tray_icon_config.colors.high.border[3]);
-                if egui::color_picker::color_edit_button_srgba(ui, &mut bg, egui::color_picker::Alpha::BlendOrAdditive).changed() {
-                    self.tray_icon_config.colors.high.bg = [bg.r(), bg.g(), bg.b(), bg.a()];
-                    self.needs_save = true;
-                }
-                ui.label(self.i18n.t("BG"));
-                if egui::color_picker::color_edit_button_srgba(ui, &mut fg, egui::color_picker::Alpha::BlendOrAdditive).changed() {
-                    self.tray_icon_config.colors.high.fg = [fg.r(), fg.g(), fg.b(), fg.a()];
-                    self.needs_save = true;
-                }
-                ui.label(self.i18n.t("FG"));
-                if egui::color_picker::color_edit_button_srgba(ui, &mut outline, egui::color_picker::Alpha::BlendOrAdditive).changed() {
-                    self.tray_icon_config.colors.high.outline = [outline.r(), outline.g(), outline.b(), outline.a()];
-                    self.needs_save = true;
-                }
-                ui.label(self.i18n.t("Out"));
-                if egui::color_picker::color_edit_button_srgba(ui, &mut border, egui::color_picker::Alpha::BlendOrAdditive).changed() {
-                    self.tray_icon_config.colors.high.border = [border.r(), border.g(), border.b(), border.a()];
-                    self.needs_save = true;
-                }
-                ui.label(self.i18n.t("Bdr"));
-            });
-        });
-
-        ui.group(|ui| {
-            ui.label(self.i18n.t("Medium (20-50%)"));
-            ui.horizontal(|ui| {
-                let mut bg = egui::Color32::from_rgba_premultiplied(self.tray_icon_config.colors.medium.bg[0], self.tray_icon_config.colors.medium.bg[1], self.tray_icon_config.colors.medium.bg[2], self.tray_icon_config.colors.medium.bg[3]);
-                let mut fg = egui::Color32::from_rgba_premultiplied(self.tray_icon_config.colors.medium.fg[0], self.tray_icon_config.colors.medium.fg[1], self.tray_icon_config.colors.medium.fg[2], self.tray_icon_config.colors.medium.fg[3]);
-                let mut outline = egui::Color32::from_rgba_premultiplied(self.tray_icon_config.colors.medium.outline[0], self.tray_icon_config.colors.medium.outline[1], self.tray_icon_config.colors.medium.outline[2], self.tray_icon_config.colors.medium.outline[3]);
-                let mut border = egui::Color32::from_rgba_premultiplied(self.tray_icon_config.colors.medium.border[0], self.tray_icon_config.colors.medium.border[1], self.tray_icon_config.colors.medium.border[2], self.tray_icon_config.colors.medium.border[3]);
-                if egui::color_picker::color_edit_button_srgba(ui, &mut bg, egui::color_picker::Alpha::BlendOrAdditive).changed() {
-                    self.tray_icon_config.colors.medium.bg = [bg.r(), bg.g(), bg.b(), bg.a()];
-                    self.needs_save = true;
-                }
-                ui.label(self.i18n.t("BG"));
-                if egui::color_picker::color_edit_button_srgba(ui, &mut fg, egui::color_picker::Alpha::BlendOrAdditive).changed() {
-                    self.tray_icon_config.colors.medium.fg = [fg.r(), fg.g(), fg.b(), fg.a()];
-                    self.needs_save = true;
-                }
-                ui.label(self.i18n.t("FG"));
-                if egui::color_picker::color_edit_button_srgba(ui, &mut outline, egui::color_picker::Alpha::BlendOrAdditive).changed() {
-                    self.tray_icon_config.colors.medium.outline = [outline.r(), outline.g(), outline.b(), outline.a()];
-                    self.needs_save = true;
-                }
-                ui.label(self.i18n.t("Out"));
-                if egui::color_picker::color_edit_button_srgba(ui, &mut border, egui::color_picker::Alpha::BlendOrAdditive).changed() {
-                    self.tray_icon_config.colors.medium.border = [border.r(), border.g(), border.b(), border.a()];
-                    self.needs_save = true;
-                }
-                ui.label(self.i18n.t("Bdr"));
-            });
-        });
-
-        ui.group(|ui| {
-            ui.label(self.i18n.t("Low (<20%)"));
-            ui.horizontal(|ui| {
-                let mut bg = egui::Color32::from_rgba_premultiplied(self.tray_icon_config.colors.low.bg[0], self.tray_icon_config.colors.low.bg[1], self.tray_icon_config.colors.low.bg[2], self.tray_icon_config.colors.low.bg[3]);
-                let mut fg = egui::Color32::from_rgba_premultiplied(self.tray_icon_config.colors.low.fg[0], self.tray_icon_config.colors.low.fg[1], self.tray_icon_config.colors.low.fg[2], self.tray_icon_config.colors.low.fg[3]);
-                let mut outline = egui::Color32::from_rgba_premultiplied(self.tray_icon_config.colors.low.outline[0], self.tray_icon_config.colors.low.outline[1], self.tray_icon_config.colors.low.outline[2], self.tray_icon_config.colors.low.outline[3]);
-                let mut border = egui::Color32::from_rgba_premultiplied(self.tray_icon_config.colors.low.border[0], self.tray_icon_config.colors.low.border[1], self.tray_icon_config.colors.low.border[2], self.tray_icon_config.colors.low.border[3]);
-                if egui::color_picker::color_edit_button_srgba(ui, &mut bg, egui::color_picker::Alpha::BlendOrAdditive).changed() {
-                    self.tray_icon_config.colors.low.bg = [bg.r(), bg.g(), bg.b(), bg.a()];
-                    self.needs_save = true;
-                }
-                ui.label(self.i18n.t("BG"));
-                if egui::color_picker::color_edit_button_srgba(ui, &mut fg, egui::color_picker::Alpha::BlendOrAdditive).changed() {
-                    self.tray_icon_config.colors.low.fg = [fg.r(), fg.g(), fg.b(), fg.a()];
-                    self.needs_save = true;
-                }
-                ui.label(self.i18n.t("FG"));
-                if egui::color_picker::color_edit_button_srgba(ui, &mut outline, egui::color_picker::Alpha::BlendOrAdditive).changed() {
-                    self.tray_icon_config.colors.low.outline = [outline.r(), outline.g(), outline.b(), outline.a()];
-                    self.needs_save = true;
-                }
-                ui.label(self.i18n.t("Out"));
-                if egui::color_picker::color_edit_button_srgba(ui, &mut border, egui::color_picker::Alpha::BlendOrAdditive).changed() {
-                    self.tray_icon_config.colors.low.border = [border.r(), border.g(), border.b(), border.a()];
-                    self.needs_save = true;
-                }
-                ui.label(self.i18n.t("Bdr"));
-            });
-        });
-
-        ui.separator();
-        ui.heading(self.i18n.t("Preview"));
+        // --- Tray icon ---
+        section_title(ui, &t("Tray icon — preview", "Иконка в трее — Превью"));
         ui.horizontal(|ui| {
             let (rgba, w, h) = generate_tray_icon_rgba(&self.tray_icon_config, 75, false);
             let image = egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &rgba);
@@ -977,9 +834,46 @@ impl HyperXApp {
             let texture2 = ui.ctx().load_texture("preview_chg", image2, egui::TextureOptions::NEAREST);
             ui.add(egui::Image::new(&texture2).fit_to_exact_size([64.0, 64.0].into()));
         });
+        let (m_big, m_bat) = (t("Big (large digits)", "Большой (крупные цифры)"), t("Battery (readable at 16 px)", "Батарейка (читается на 16 px)"));
+        setting_row_d(ui, &t("Mode", "Режим"), &t("Big: large digits / Battery: stylised icon", "Большой: крупные цифры / Батарейка: стилизованная иконка"), |ui| {
+            egui::ComboBox::from_id_source("tray_mode")
+                .selected_text(if self.tray_icon_config.mode == TrayIconMode::Big { m_big.as_str() } else { m_bat.as_str() })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.tray_icon_config.mode, TrayIconMode::Big, &m_big);
+                    ui.selectable_value(&mut self.tray_icon_config.mode, TrayIconMode::Battery, &m_bat);
+                });
+            false
+        });
+        setting_row_d(ui, &t("Icon size", "Размер иконки"), &t("Preview resolution", "Разрешение превью"),
+            |ui| ui.add(egui::Slider::new(&mut self.tray_icon_config.size, 16..=512)).changed());
+        setting_row_d(ui, &t("Font scale", "Масштаб шрифта"), "",
+            |ui| ui.add(egui::Slider::new(&mut self.tray_icon_config.font_scale, 10..=200)).changed());
+        setting_row_d(ui, &t("Outline width", "Ширина обводки"), "",
+            |ui| ui.add(egui::Slider::new(&mut self.tray_icon_config.outline_width, 0..=10)).changed());
+        setting_row_d(ui, &t("Border width", "Ширина рамки"), "",
+            |ui| ui.add(egui::Slider::new(&mut self.tray_icon_config.border_width, 0..=10)).changed());
+        setting_row_d(ui, &t("Digit gap", "Расстояние между цифрами"), "",
+            |ui| ui.add(egui::Slider::new(&mut self.tray_icon_config.gap_between_digits, 0..=10)).changed());
+        setting_row_d(ui, &t("Smooth colour blend", "Плавная смена цвета"),
+            &t("Colour changes smoothly from Low through Medium to High with the charge instead of jumping at thresholds. Charging keeps its own colour.", "Цвет меняется плавно от «Низкий» через «Средний» к «Высокий» вместе с зарядом, а не скачком на порогах. Зарядка сохраняет свой цвет."),
+            |ui| ui.checkbox(&mut self.tray_icon_config.smooth_colors, "").changed());
 
-        let tray_cfg_before = self.tray_icon_config.clone();
-        if ui.button(self.i18n.t("Save Tray Icon Config")).clicked() {
+        section_title(ui, &t("Charge thresholds", "Пороги заряда"));
+        setting_row_d(ui, &t("High charge — above", "Высокий заряд — выше"), &t("Above this value the icon is \"High\" (default 50)", "Выше этого значения иконка «Высокий» (по умолчанию 50)"),
+            |ui| ui.add(egui::DragValue::new(&mut self.tray_icon_config.high_threshold).range(1..=100)).changed());
+        setting_row_d(ui, &t("Low charge — up to", "Низкий заряд — не выше"), &t("Between thresholds is \"Medium\"; at this value and below \"Low\" (default 20)", "Между порогами «Средний», на этом значении и ниже «Низкий» (по умолчанию 20)"),
+            |ui| ui.add(egui::DragValue::new(&mut self.tray_icon_config.low_threshold).range(0..=99)).changed());
+
+        section_title(ui, &t("Colours by status: BACKGROUND / TEXT / OUTLINE / BORDER", "Цвета по статусам: ФОН / ТЕКСТ / ОБВОДКА / РАМКА"));
+        let names = [t("Charging", "Зарядка"), t("High", "Высокий"), t("Medium", "Средний"), t("Low", "Низкий"), t("Headset off", "Гарнитура выключена")];
+        color_row(ui, &names[0], &mut self.tray_icon_config.colors.charging);
+        color_row(ui, &names[1], &mut self.tray_icon_config.colors.high);
+        color_row(ui, &names[2], &mut self.tray_icon_config.colors.medium);
+        color_row(ui, &names[3], &mut self.tray_icon_config.colors.low);
+        color_row(ui, &names[4], &mut self.tray_icon_config.colors.offline);
+
+        ui.add_space(8.0);
+        if ui.button(self.i18n.pick("Save tray icon config", "Сохранить настройки иконки")).clicked() {
             log::info!("[GUI] Save Tray Icon Config clicked");
             self.tray_icon_config.sanitize();
             if let Err(e) = self.tray_icon_config.save(crate::tray::icon::TrayIconConfig::default_path()) {
@@ -990,12 +884,12 @@ impl HyperXApp {
                 log::info!("[GUI] Tray icon config updated and refreshed");
             }
         }
-        if ui.button(self.i18n.t("Reset to Default")).clicked() {
+        if ui.button(self.i18n.pick("Reset to default", "Сбросить по умолчанию")).clicked() {
             log::info!("[GUI] Reset tray icon to default");
             self.tray_icon_config = crate::tray::icon::TrayIconConfig::default();
             self.needs_save = true;
         }
-        if ui.button(self.i18n.t("Apply to Tray Now")).clicked() {
+        if ui.button(self.i18n.pick("Apply to tray now", "Применить к трею")).clicked() {
             log::info!("[GUI] Apply to Tray Now clicked");
             self.tray_icon_config.sanitize();
             if let Some(tray) = &mut self.tray {
@@ -1025,7 +919,7 @@ impl HyperXApp {
     }
 
     fn show_settings_discord(&mut self, ui: &mut egui::Ui) {
-        discord_tab::show(ui, &mut self.config.discord, self.discord_connected, &mut self.needs_save, &mut self.recording_keybind, &mut self.keybind_capture);
+        discord_tab::show(ui, &self.i18n, &mut self.config.discord, self.discord_connected, &mut self.needs_save, &mut self.recording_keybind, &mut self.keybind_capture);
     }
 
     fn scan_audio_devices(&mut self) {
@@ -1157,14 +1051,31 @@ impl HyperXApp {
 }
 
 /// Tab with a red underline when selected (matches the Tauri UI).
-fn section_title(ui: &mut egui::Ui, text: &str) {
+fn color_row(ui: &mut egui::Ui, title: &str, c: &mut crate::tray::icon::IconColors) {
+    ui.separator();
+    ui.horizontal(|ui| {
+        ui.set_min_height(36.0);
+        ui.label(egui::RichText::new(title).size(14.0).color(egui::Color32::from_rgb(0xd5, 0xd5, 0xd5)));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            for slot in [&mut c.border, &mut c.outline, &mut c.fg, &mut c.bg] {
+                let mut col = egui::Color32::from_rgba_unmultiplied(slot[0], slot[1], slot[2], slot[3]);
+                if egui::color_picker::color_edit_button_srgba(ui, &mut col, egui::color_picker::Alpha::BlendOrAdditive).changed() {
+                    let [r, g, b, a] = col.to_srgba_unmultiplied();
+                    *slot = [r, g, b, a];
+                }
+            }
+        });
+    });
+}
+
+pub(crate) fn section_title(ui: &mut egui::Ui, text: &str) {
     ui.add_space(8.0);
     ui.label(egui::RichText::new(text.to_uppercase()).size(13.0).color(egui::Color32::from_rgb(0xaa, 0xaa, 0xaa)));
     ui.add_space(4.0);
 }
 
 /// Settings row with a grey description under the title (like `.setting-row` + `.setting-desc`).
-fn setting_row_d(ui: &mut egui::Ui, title: &str, desc: &str, add: impl FnOnce(&mut egui::Ui) -> bool) -> bool {
+pub(crate) fn setting_row_d(ui: &mut egui::Ui, title: &str, desc: &str, add: impl FnOnce(&mut egui::Ui) -> bool) -> bool {
     ui.separator();
     let mut changed = false;
     ui.horizontal(|ui| {
