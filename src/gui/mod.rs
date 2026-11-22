@@ -59,6 +59,7 @@ pub enum SettingsTab {
     Discord,
     Audio,
     Debug,
+    Interface,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -286,85 +287,6 @@ impl eframe::App for HyperXApp {
         } else {
             ctx.send_viewport_cmd(egui::ViewportCommand::Resizable(true));
 
-        // === LEFT PANEL: sound + microphone (always visible) ===
-        egui::SidePanel::left("audio_panel")
-            .resizable(false)
-            .default_width(112.0)
-            .show(ctx, |ui| {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(10.0);
-
-                    // --- Master Volume ---
-                    ui.heading(self.i18n.t("VOL"));
-                    let mut vol = self.volume;
-                    ui.add(
-                        egui::Slider::new(&mut vol, 0.0..=100.0)
-                            .vertical()
-                            .show_value(false)
-                            .text("")
-                    );
-                    if vol != self.volume {
-                        self.volume = vol;
-                        if let Some(ref controller) = self.volume_controller {
-                            controller.set_master_volume(vol);
-                        }
-                    }
-                    ui.label(format!("{:.0}%", self.volume));
-
-                    ui.add_space(15.0);
-
-                    // --- Mic Volume ---
-                    ui.heading(self.i18n.t("MIC"));
-                    let mut mic_vol = self.mic_volume;
-                    ui.add(
-                        egui::Slider::new(&mut mic_vol, 0.0..=100.0)
-                            .vertical()
-                            .show_value(false)
-                            .text("")
-                    );
-                    if mic_vol != self.mic_volume {
-                        self.mic_volume = mic_vol;
-                        if let Some(ref controller) = self.volume_controller {
-                            controller.set_microphone_volume(mic_vol);
-                        }
-                    }
-                    ui.label(format!("{:.0}%", self.mic_volume));
-
-                    ui.add_space(10.0);
-
-                    // --- Mic Mute ---
-                    let is_mic_muted = self.volume_controller.as_ref()
-                        .and_then(|c| c.get_microphone_mute())
-                        .unwrap_or(self.device_state.muted);
-                    let mic_label = if is_mic_muted { "MUTE" } else { "MIC ON" };
-                    if ui.button(mic_label).clicked() {
-                        if let Some(ref controller) = self.volume_controller {
-                            controller.set_microphone_mute(!is_mic_muted);
-                        } else if let Some(tx) = &self.device_cmd_tx {
-                            let _ = tx.send(crate::DeviceCommand::ToggleMute);
-                        }
-                    }
-
-                    ui.add_space(10.0);
-
-                    // --- Sidetone ---
-                    let mut sidetone = self.device_state.sidetone;
-                    if ui.checkbox(&mut sidetone, self.i18n.t("Sidetone")).changed() {
-                        if let Some(tx) = &self.device_cmd_tx {
-                            let _ = tx.send(crate::DeviceCommand::SetSidetone(sidetone));
-                        }
-                        self.device_state.sidetone = sidetone;
-                    }
-
-                    ui.add_space(15.0);
-
-                    // --- Media Play/Pause ---
-                    if ui.add_sized([64.0, 40.0], egui::Button::new("PLAY")).clicked() {
-                        crate::input::GLOBAL_MUTE_HANDLER.do_media_play_pause();
-                    }
-                });
-            });
-
         // === TOP PANEL ===
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
@@ -389,14 +311,14 @@ impl eframe::App for HyperXApp {
                         ui.label(format!("{} {}%", icon, self.device_state.battery_percent));
                         ui.colored_label(egui::Color32::from_rgb(0x20, 0xe8, 0x3a), "ON");
                     } else {
-                        ui.colored_label(egui::Color32::RED, "OFF - No connection");
+                        ui.colored_label(egui::Color32::RED, &self.i18n.t("OFF - No connection"));
                     }
                 });
             });
         });
 
         // === CENTER ===
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().frame(egui::Frame::none().fill(egui::Color32::from_rgb(0x18, 0x18, 0x18)).inner_margin(egui::Margin::symmetric(18.0, 14.0))).show(ctx, |ui| {
             match self.selected_tab {
                 Tab::Dashboard => self.show_dashboard(ui),
                 Tab::Equalizer => self.show_equalizer(ui),
@@ -579,6 +501,53 @@ impl HyperXApp {
         });
     }
 
+    /// VOL / MIC sliders + mic button + sidetone + play (same layout as the Tauri dashboard).
+    fn show_controls(&mut self, ui: &mut egui::Ui) {
+        ui.add_space(6.0);
+        ui.columns(2, |cols| {
+            cols[0].horizontal(|ui| {
+                ui.label(egui::RichText::new(self.i18n.t("VOL")).color(egui::Color32::from_rgb(0xa5, 0xa5, 0xa5)));
+                let mut vol = self.volume;
+                ui.add(egui::Slider::new(&mut vol, 0.0..=100.0).show_value(false).trailing_fill(false));
+                ui.label(format!("{:.0}%", self.volume));
+                if vol != self.volume {
+                    self.volume = vol;
+                    if let Some(ref c) = self.volume_controller { c.set_master_volume(vol); }
+                }
+            });
+            cols[1].horizontal(|ui| {
+                ui.label(egui::RichText::new(self.i18n.t("MIC")).color(egui::Color32::from_rgb(0xa5, 0xa5, 0xa5)));
+                let mut mv = self.mic_volume;
+                ui.add(egui::Slider::new(&mut mv, 0.0..=100.0).show_value(false).trailing_fill(false));
+                ui.label(format!("{:.0}%", self.mic_volume));
+                if mv != self.mic_volume {
+                    self.mic_volume = mv;
+                    if let Some(ref c) = self.volume_controller { c.set_microphone_volume(mv); }
+                }
+            });
+        });
+        ui.horizontal(|ui| {
+            let muted = self.volume_controller.as_ref().and_then(|c| c.get_microphone_mute()).unwrap_or(self.device_state.muted);
+            let label = if muted { self.i18n.t("MUTE") } else { self.i18n.t("MIC ON") };
+            let active = muted;
+            let mut b = egui::Button::new(label).min_size(egui::vec2(70.0, 30.0));
+            if active { b = b.fill(egui::Color32::from_rgb(0xd4, 0, 0)); }
+            if ui.add(b).clicked() {
+                if let Some(ref c) = self.volume_controller { c.set_microphone_mute(!muted); }
+                else if let Some(tx) = &self.device_cmd_tx { let _ = tx.send(crate::DeviceCommand::ToggleMute); }
+            }
+            let mut st = self.device_state.sidetone;
+            if ui.checkbox(&mut st, self.i18n.t("Sidetone")).changed() {
+                if let Some(tx) = &self.device_cmd_tx { let _ = tx.send(crate::DeviceCommand::SetSidetone(st)); }
+                self.device_state.sidetone = st;
+            }
+            if ui.add(egui::Button::new("PLAY").min_size(egui::vec2(64.0, 30.0))).clicked() {
+                crate::input::GLOBAL_MUTE_HANDLER.do_media_play_pause();
+            }
+        });
+        ui.add_space(6.0);
+    }
+
     fn show_dashboard(&mut self, ui: &mut egui::Ui) {
         ui.heading(self.i18n.t("Headset Status"));
         ui.separator();
@@ -608,9 +577,9 @@ impl HyperXApp {
             ui.vertical(|ui| {
                 ui.label(self.i18n.t("Microphone") + ":");
                 if self.device_state.muted {
-                    ui.colored_label(egui::Color32::from_rgb(0xe0, 0x4a, 0x4a), "Muted");
+                    ui.colored_label(egui::Color32::from_rgb(0xe0, 0x4a, 0x4a), self.i18n.t("Muted"));
                 } else {
-                    ui.colored_label(egui::Color32::from_rgb(0x20, 0xe8, 0x3a), "Active");
+                    ui.colored_label(egui::Color32::from_rgb(0x20, 0xe8, 0x3a), self.i18n.t("Active"));
                 }
                 ui.add_space(10.0);
                 ui.label(self.i18n.t("Signal:"));
@@ -618,6 +587,9 @@ impl HyperXApp {
             });
         });
 
+        ui.add_space(6.0);
+        ui.separator();
+        self.show_controls(ui);
         ui.separator();
         ui.heading(self.i18n.t("Quick Actions"));
         ui.horizontal(|ui| {
@@ -651,12 +623,21 @@ impl HyperXApp {
 
     fn show_settings(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.selectable_value(&mut self.selected_settings_tab, SettingsTab::Headset, self.i18n.t("Headset"));
-            ui.selectable_value(&mut self.selected_settings_tab, SettingsTab::Voice, self.i18n.t("Voice"));
-            ui.selectable_value(&mut self.selected_settings_tab, SettingsTab::TrayIcon, self.i18n.t("Tray Icon"));
-            ui.selectable_value(&mut self.selected_settings_tab, SettingsTab::Discord, self.i18n.t("Discord"));
-            ui.selectable_value(&mut self.selected_settings_tab, SettingsTab::Audio, self.i18n.t("Audio"));
-            ui.selectable_value(&mut self.selected_settings_tab, SettingsTab::Debug, self.i18n.t("Debug"));
+            ui.spacing_mut().item_spacing.x = 2.0;
+            for (tab, key) in [
+                (SettingsTab::Headset, "Headset"), (SettingsTab::Voice, "Voice"), (SettingsTab::TrayIcon, "Tray Icon"),
+                (SettingsTab::Discord, "Discord"), (SettingsTab::Audio, "Audio"), (SettingsTab::Debug, "Debug"),
+                (SettingsTab::Interface, "Interface"),
+            ] {
+                let sel = self.selected_settings_tab == tab;
+                let txt = egui::RichText::new(self.i18n.t(key)).color(if sel { egui::Color32::WHITE } else { egui::Color32::from_rgb(0x88, 0x88, 0x88) });
+                let btn = egui::Button::new(txt)
+                    .fill(if sel { egui::Color32::from_rgb(0x22, 0x22, 0x22) } else { egui::Color32::from_rgb(0x1b, 0x1b, 0x1b) })
+                    .stroke(if sel { egui::Stroke::new(1.0, egui::Color32::from_rgb(0x3b, 0x3b, 0x3b)) } else { egui::Stroke::NONE })
+                    .rounding(0.0)
+                    .min_size(egui::vec2(0.0, 34.0));
+                if ui.add(btn).clicked() { self.selected_settings_tab = tab; }
+            }
         });
         ui.separator();
         egui::ScrollArea::vertical().show(ui, |ui| {
@@ -667,6 +648,7 @@ impl HyperXApp {
                 SettingsTab::Discord => self.show_settings_discord(ui),
                 SettingsTab::Audio => self.show_settings_audio(ui),
                 SettingsTab::Debug => self.show_settings_debug(ui),
+                SettingsTab::Interface => self.show_settings_interface(ui),
             }
         });
     }
@@ -1113,27 +1095,55 @@ hold=Play/Pause"));
             log::info!("[GUI] Log to file changed to {}", self.config.log_to_file);
         }
         ui.small(self.i18n.t("Logging changes require restart."));
+    }
 
-        ui.separator();
-        ui.heading(self.i18n.t("Language"));
-        let lang_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.join("lang"))).unwrap_or_else(|| std::path::PathBuf::from("lang"));
-        let available = crate::i18n::I18n::list_available(&lang_dir);
-        let mut selected = self.i18n.current_lang().to_string();
-        let current_name = available.iter().find(|(code, _)| code == &selected).map(|(_, name)| name.clone()).unwrap_or_else(|| "English".to_string());
-        egui::ComboBox::from_label("").selected_text(current_name).show_ui(ui, |ui| {
-            for (code, name) in &available {
-                if ui.selectable_value(&mut selected, code.clone(), name.clone()).changed()
-                    && selected != self.config.language {
-                        self.config.language = selected.clone();
-                        self.i18n = crate::i18n::I18n::new(&lang_dir, &selected);
-                        self.needs_save = true;
-                    }
-            }
+    fn show_settings_interface(&mut self, ui: &mut egui::Ui) {
+        section_title(ui, &self.i18n.t("Interface and startup"));
+        if setting_row(ui, &self.i18n.t("System notifications"), |ui| ui.checkbox(&mut self.config.desktop_notifications, "").changed()) { self.needs_save = true; }
+        if setting_row(ui, &self.i18n.t("Start with the system"), |ui| ui.checkbox(&mut self.config.start_with_os, "").changed()) { self.needs_save = true; }
+        if setting_row(ui, &self.i18n.t("Start in compact mode"), |ui| ui.checkbox(&mut self.config.start_in_compact_mode, "").changed()) { self.needs_save = true; }
+        if setting_row(ui, &self.i18n.t("Compact mode"), |ui| ui.checkbox(&mut self.config.compact_mode, "").changed()) { self.needs_save = true; }
+        let mut selected = self.config.language.clone();
+        let label = self.i18n.t("Language");
+        setting_row(ui, &label, |ui| {
+            egui::ComboBox::from_id_source("lang")
+                .selected_text(if selected == "ru" { "Русский" } else { "English" })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut selected, "ru".to_string(), "Русский");
+                    ui.selectable_value(&mut selected, "en".to_string(), "English");
+                });
+            false
         });
+        if selected != self.config.language {
+            let lang_dir = std::path::PathBuf::from("lang");
+            self.config.language = selected.clone();
+            self.i18n = crate::i18n::I18n::new(&lang_dir, &selected);
+            self.needs_save = true;
+        }
     }
 }
 
 /// Tab with a red underline when selected (matches the Tauri UI).
+fn section_title(ui: &mut egui::Ui, text: &str) {
+    ui.add_space(8.0);
+    ui.label(egui::RichText::new(text.to_uppercase()).size(13.0).color(egui::Color32::from_rgb(0xaa, 0xaa, 0xaa)));
+    ui.add_space(4.0);
+}
+
+/// One settings row: title on the left, control on the right, separator above (like `.setting-row`).
+fn setting_row(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui) -> bool) -> bool {
+    ui.separator();
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.set_min_height(40.0);
+        ui.label(egui::RichText::new(title).size(14.0).color(egui::Color32::from_rgb(0xd5, 0xd5, 0xd5)));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            changed = add(ui);
+        });
+    });
+    changed
+}
+
 fn underline_tab(ui: &mut egui::Ui, selected: bool, text: &str) -> egui::Response {
     let color = if selected { egui::Color32::WHITE } else { egui::Color32::from_rgb(0xa8, 0xa8, 0xa8) };
     let galley = ui.painter().layout_no_wrap(text.to_string(), egui::FontId::proportional(14.0), color);
