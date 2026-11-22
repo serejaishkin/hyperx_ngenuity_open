@@ -366,6 +366,14 @@ impl HyperXDevice {
                     // (the dongle also sends unrelated frames, e.g. 06 FF BB 01 ..., which must be skipped).
                     let mut wrote = false;
                     for attempt in 1..=3 {
+                        if attempt == 1 && write_hid_report(&device, &build_packet(1, &[])).is_ok() {
+                            // Wireless status (cmd 1): data[4]==1 means the headset is linked to the dongle.
+                            let mut sb = [0u8; 256];
+                            match device.read_timeout(&mut sb, 500) {
+                                Ok(n) if n > 0 => log::info!("[HID] Dongle status reply on {:04X}: {:02X?}", info.usage_page(), &sb[0..16.min(n)]),
+                                _ => log::info!("[HID] Dongle gave no status reply on {:04X}", info.usage_page()),
+                            }
+                        }
                         if let Err(e) = write_hid_report(&device, &packet) {
                             log::debug!("[HID] Battery probe write failed: {}", e);
                             break;

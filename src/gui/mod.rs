@@ -791,19 +791,31 @@ hold=Play/Pause"));
     }
 
     fn show_settings_tray_icon(&mut self, ui: &mut egui::Ui) {
+        let tr0 = self.i18n.t("Battery indicator (headphones + %):");
+        let tr1 = self.i18n.t("Off");
+        let tr2 = self.i18n.t("Floating");
+        let tr3 = self.i18n.t("On taskbar");
+        let tr4 = self.i18n.t("Digits only");
+        let tr5 = self.i18n.t("Percent only");
+        let tr6 = self.i18n.t("Headphones + %");
+        let tr7 = self.i18n.t("Mode:");
+        let tr8 = self.i18n.t("Big digits (fill the icon, no background)");
+        let tr9 = self.i18n.t("Battery gauge (readable at 16px)");
+        let tr10 = self.i18n.t("Big mode: digits auto-fit the icon and use the status color; Outline is the outline color.");
+        let tr11 = self.i18n.t("Smooth color blend by charge");
         use crate::tray::icon::{generate_tray_icon_rgba, TrayIconMode};
         ui.heading(self.i18n.t("Tray Icon"));
         ui.horizontal(|ui| {
-            ui.label("Battery indicator (headphones + %):");
+            ui.label(&tr0);
             let mut sel = if !self.config.taskbar_widget { "off" } else if cfg!(windows) && self.config.dock_mode == "taskbar" { "taskbar" } else { "floating" };
             let before = sel;
             egui::ComboBox::from_id_source("dock_mode")
-                .selected_text(match sel { "off" => "Off", "taskbar" => "On taskbar", _ => "Floating" })
+                .selected_text(match sel { "off" => tr1.as_str(), "taskbar" => tr3.as_str(), _ => tr2.as_str() })
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut sel, "off", "Off");
-                    ui.selectable_value(&mut sel, "floating", "Floating");
+                    ui.selectable_value(&mut sel, "off", &tr1);
+                    ui.selectable_value(&mut sel, "floating", &tr2);
                     #[cfg(windows)]
-                    ui.selectable_value(&mut sel, "taskbar", "On taskbar");
+                    ui.selectable_value(&mut sel, "taskbar", &tr3);
                 });
             if sel != before {
                 self.config.taskbar_widget = sel != "off";
@@ -812,23 +824,23 @@ hold=Play/Pause"));
             }
             let mut st = self.config.dock_style.clone();
             egui::ComboBox::from_id_source("dock_style")
-                .selected_text(match st.as_str() { "digits" => "Digits only", "percent" => "Percent only", _ => "Headphones + %" })
+                .selected_text(match st.as_str() { "digits" => tr4.as_str(), "percent" => tr5.as_str(), _ => tr6.as_str() })
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut st, "icon".to_string(), "Headphones + %");
-                    ui.selectable_value(&mut st, "percent".to_string(), "Percent only");
-                    ui.selectable_value(&mut st, "digits".to_string(), "Digits only");
+                    ui.selectable_value(&mut st, "icon".to_string(), &tr6);
+                    ui.selectable_value(&mut st, "percent".to_string(), &tr5);
+                    ui.selectable_value(&mut st, "digits".to_string(), &tr4);
                 });
             if st != self.config.dock_style { self.config.dock_style = st; self.needs_save = true; }
         });
         ui.separator();
         ui.horizontal(|ui| {
-            ui.label("Mode:");
-            ui.selectable_value(&mut self.tray_icon_config.mode, TrayIconMode::Big, "Big digits (fill the icon, no background)");
-            ui.selectable_value(&mut self.tray_icon_config.mode, TrayIconMode::Battery, "Battery gauge (readable at 16px)");
+            ui.label(&tr7);
+            ui.selectable_value(&mut self.tray_icon_config.mode, TrayIconMode::Big, &tr8);
+            ui.selectable_value(&mut self.tray_icon_config.mode, TrayIconMode::Battery, &tr9);
         });
         if self.tray_icon_config.mode == TrayIconMode::Big {
-            ui.small("Big mode: digits auto-fit the icon and use the status color; Outline is the outline color.");
-            if ui.checkbox(&mut self.tray_icon_config.smooth_colors, "Smooth color blend by charge").changed() { self.needs_save = true; }
+            ui.small(&tr10);
+            if ui.checkbox(&mut self.tray_icon_config.smooth_colors, &tr11).changed() { self.needs_save = true; }
         }
         ui.horizontal(|ui| {
             ui.label(self.i18n.t("Size:"));

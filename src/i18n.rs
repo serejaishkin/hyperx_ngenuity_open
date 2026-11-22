@@ -28,6 +28,18 @@ const RU: &[(&str, &str)] = &[
     ("System notifications", "Системные уведомления"), ("Start with the system", "Запускать с системой"),
     ("Start in compact mode", "Запускать в компактном режиме"), ("Compact mode", "Компактный режим"),
     ("Headset connected", "Гарнитура подключена"), ("Device ready", "Устройство готово"),
+    ("Battery indicator (headphones + %):", "Индикатор заряда (наушники и %):"), ("Off", "Выключен"), ("Floating", "Плавающий"),
+    ("On taskbar", "На панели задач"), ("Digits only", "Только цифры"), ("Percent only", "Только процент"),
+    ("Headphones + %", "Наушники и %"), ("Mode:", "Режим:"),
+    ("Big digits (fill the icon, no background)", "Крупные цифры (на всю иконку, без фона)"),
+    ("Battery gauge (readable at 16px)", "Шкала батареи (читается в 16 px)"),
+    ("Big mode: digits auto-fit the icon and use the status color; Outline is the outline color.", "Крупный режим: цифры подгоняются под иконку и берут цвет статуса; Outline — цвет контура."),
+    ("Smooth color blend by charge", "Плавное смешение цвета по заряду"), ("Size:", "Размер:"), ("Outline:", "Контур:"),
+    ("Colors", "Цвета"), ("Preview", "Превью"), ("High (>50%)", "Высокий (>50%)"), ("Medium (20-50%)", "Средний (20–50%)"),
+    ("Low (<20%)", "Низкий (<20%)"), ("BG", "Фон"), ("FG", "Текст"), ("Out", "Конт."), ("Bdr", "Рамка"),
+    ("Apply to Tray Now", "Применить к трею"), ("Save Tray Icon Config", "Сохранить настройки иконки"),
+    ("Reset to Default", "Сбросить по умолчанию"), ("Voice Notifications", "Голосовые оповещения"),
+    ("Apply Voice Settings", "Применить настройки голоса"),
     ("Save", "Сохранить"), ("Active", "Активен"), ("Muted", "Выключен"), ("OFF - No connection", "OFF — нет подключения"),
 ];
 
