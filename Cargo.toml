@@ -1,6 +1,6 @@
 [package]
 name = "hyperx-ngenuity-open"
-version = "0.2.61"
+version = "0.2.62"
 edition = "2021"
 authors = ["serejaishkin"]
 license = "MIT"
@@ -67,3 +67,6 @@ path = "src/main.rs"
 
 [lib]
 path = "src/lib.rs"
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
