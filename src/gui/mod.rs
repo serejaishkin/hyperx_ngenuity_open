@@ -8,6 +8,9 @@ use std::time::{Duration, Instant};
 
 pub mod eq_tab;
 pub mod discord_tab;
+pub mod dock;
+#[cfg(windows)]
+pub mod taskbar_dock;
 
 pub struct HyperXApp {
     pub config: Config,
@@ -166,14 +169,9 @@ impl HyperXApp {
 impl eframe::App for HyperXApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint_after(Duration::from_millis(100));
+        self.show_dock(ctx);
 
-        // HyperX dark theme
-        ctx.set_visuals(egui::Visuals::dark());
-        ctx.style_mut(|s| {
-            s.visuals.selection.bg_fill = egui::Color32::from_rgb(200, 30, 30);
-            s.visuals.widgets.active.bg_fill = egui::Color32::from_rgb(200, 30, 30);
-            s.visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(160, 20, 20);
-        });
+        apply_tauri_theme(ctx);
 
         if let Some(tray) = &mut self.tray {
             tray.poll();
@@ -291,7 +289,7 @@ impl eframe::App for HyperXApp {
         // === LEFT PANEL: sound + microphone (always visible) ===
         egui::SidePanel::left("audio_panel")
             .resizable(false)
-            .default_width(100.0)
+            .default_width(112.0)
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.add_space(10.0);
@@ -361,7 +359,7 @@ impl eframe::App for HyperXApp {
                     ui.add_space(15.0);
 
                     // --- Media Play/Pause ---
-                    if ui.add_sized([50.0, 40.0], egui::Button::new("PLAY")).clicked() {
+                    if ui.add_sized([64.0, 40.0], egui::Button::new("PLAY")).clicked() {
                         crate::input::GLOBAL_MUTE_HANDLER.do_media_play_pause();
                     }
                 });
@@ -370,9 +368,12 @@ impl eframe::App for HyperXApp {
         // === TOP PANEL ===
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
-                ui.selectable_value(&mut self.selected_tab, Tab::Dashboard, self.i18n.t("Dashboard"));
-                ui.selectable_value(&mut self.selected_tab, Tab::Equalizer, self.i18n.t("Equalizer"));
-                ui.selectable_value(&mut self.selected_tab, Tab::Settings, self.i18n.t("Settings"));
+                ui.spacing_mut().item_spacing.x = 18.0;
+                for (tab, key) in [(Tab::Dashboard, "Dashboard"), (Tab::Equalizer, "Equalizer"), (Tab::Settings, "Settings")] {
+                    if underline_tab(ui, self.selected_tab == tab, &self.i18n.t(key)).clicked() {
+                        self.selected_tab = tab;
+                    }
+                }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("⛶").clicked() {
@@ -386,7 +387,7 @@ impl eframe::App for HyperXApp {
                     if self.device_state.connected {
                         let icon = if self.device_state.charging { "[CHG]" } else { "[BAT]" };
                         ui.label(format!("{} {}%", icon, self.device_state.battery_percent));
-                        ui.colored_label(egui::Color32::GREEN, "ON");
+                        ui.colored_label(egui::Color32::from_rgb(0x20, 0xe8, 0x3a), "ON");
                     } else {
                         ui.colored_label(egui::Color32::RED, "OFF - No connection");
                     }
@@ -423,7 +424,7 @@ impl HyperXApp {
                 ui.add_space(3.0);
 
                 let icon = if self.device_state.charging { "⚡" } else { "🔋" };
-                let color = if self.device_state.battery_percent > 30 { egui::Color32::GREEN }
+                let color = if self.device_state.battery_percent > 30 { egui::Color32::from_rgb(0x20, 0xe8, 0x3a) }
                     else if self.device_state.battery_percent > 15 { egui::Color32::YELLOW }
                     else { egui::Color32::RED };
                 ui.colored_label(color, format!("{} {}%", icon, self.device_state.battery_percent));
@@ -590,10 +591,16 @@ impl HyperXApp {
                 }
                 ui.label(format!("{}%", self.device_state.battery_percent));
                 let battery = self.device_state.battery_percent as f32 / 100.0;
-                let color = if self.device_state.battery_percent > 30 { egui::Color32::GREEN }
-                    else if self.device_state.battery_percent > 15 { egui::Color32::YELLOW }
-                    else { egui::Color32::RED };
-                ui.add(egui::ProgressBar::new(battery).fill(color).desired_width(200.0));
+                let color = if self.device_state.charging { egui::Color32::from_rgb(0x20, 0xe8, 0x3a) }
+                    else if self.device_state.battery_percent <= 20 { egui::Color32::from_rgb(0xe0, 0x4a, 0x4a) }
+                    else { egui::Color32::from_rgb(0xd9, 0xa4, 0x00) };
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(300.0, 18.0), egui::Sense::hover());
+                ui.painter().rect_filled(rect, 9.0, egui::Color32::from_rgb(5, 5, 5));
+                if battery > 0.0 {
+                    let mut fill = rect;
+                    fill.set_width((rect.width() * battery).max(18.0));
+                    ui.painter().rect_filled(fill, 9.0, color);
+                }
             });
 
             ui.separator();
@@ -601,9 +608,9 @@ impl HyperXApp {
             ui.vertical(|ui| {
                 ui.label(self.i18n.t("Microphone") + ":");
                 if self.device_state.muted {
-                    ui.colored_label(egui::Color32::RED, "Muted");
+                    ui.colored_label(egui::Color32::from_rgb(0xe0, 0x4a, 0x4a), "Muted");
                 } else {
-                    ui.colored_label(egui::Color32::GREEN, "Active");
+                    ui.colored_label(egui::Color32::from_rgb(0x20, 0xe8, 0x3a), "Active");
                 }
                 ui.add_space(10.0);
                 ui.label(self.i18n.t("Signal:"));
@@ -804,6 +811,34 @@ hold=Play/Pause"));
     fn show_settings_tray_icon(&mut self, ui: &mut egui::Ui) {
         use crate::tray::icon::{generate_tray_icon_rgba, TrayIconMode};
         ui.heading(self.i18n.t("Tray Icon"));
+        ui.horizontal(|ui| {
+            ui.label("Battery indicator (headphones + %):");
+            let mut sel = if !self.config.taskbar_widget { "off" } else if cfg!(windows) && self.config.dock_mode == "taskbar" { "taskbar" } else { "floating" };
+            let before = sel;
+            egui::ComboBox::from_id_source("dock_mode")
+                .selected_text(match sel { "off" => "Off", "taskbar" => "On taskbar", _ => "Floating" })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut sel, "off", "Off");
+                    ui.selectable_value(&mut sel, "floating", "Floating");
+                    #[cfg(windows)]
+                    ui.selectable_value(&mut sel, "taskbar", "On taskbar");
+                });
+            if sel != before {
+                self.config.taskbar_widget = sel != "off";
+                if sel != "off" { self.config.dock_mode = sel.to_string(); }
+                self.needs_save = true;
+            }
+            let mut st = self.config.dock_style.clone();
+            egui::ComboBox::from_id_source("dock_style")
+                .selected_text(match st.as_str() { "digits" => "Digits only", "percent" => "Percent only", _ => "Headphones + %" })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut st, "icon".to_string(), "Headphones + %");
+                    ui.selectable_value(&mut st, "percent".to_string(), "Percent only");
+                    ui.selectable_value(&mut st, "digits".to_string(), "Digits only");
+                });
+            if st != self.config.dock_style { self.config.dock_style = st; self.needs_save = true; }
+        });
+        ui.separator();
         ui.horizontal(|ui| {
             ui.label("Mode:");
             ui.selectable_value(&mut self.tray_icon_config.mode, TrayIconMode::Big, "Big digits (fill the icon, no background)");
@@ -1096,4 +1131,64 @@ hold=Play/Pause"));
             }
         });
     }
+}
+
+/// Tab with a red underline when selected (matches the Tauri UI).
+fn underline_tab(ui: &mut egui::Ui, selected: bool, text: &str) -> egui::Response {
+    let color = if selected { egui::Color32::WHITE } else { egui::Color32::from_rgb(0xa8, 0xa8, 0xa8) };
+    let galley = ui.painter().layout_no_wrap(text.to_string(), egui::FontId::proportional(14.0), color);
+    let size = egui::vec2(galley.size().x + 16.0, 34.0);
+    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+    let color = if resp.hovered() && !selected { egui::Color32::WHITE } else { color };
+    ui.painter().galley(egui::pos2(rect.left() + 8.0, rect.center().y - galley.size().y / 2.0), galley, color);
+    if selected {
+        let y = rect.bottom();
+        ui.painter().line_segment(
+            [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
+            egui::Stroke::new(2.0, egui::Color32::from_rgb(0xd4, 0x00, 0x00)),
+        );
+    }
+    resp
+}
+
+/// Colors, spacing and type sizes taken from ui/styles.css so both front-ends look alike.
+fn apply_tauri_theme(ctx: &egui::Context) {
+    use egui::{Color32 as C, FontFamily::Proportional, FontId, TextStyle};
+    let accent = C::from_rgb(0xd4, 0x00, 0x00);
+    let mut v = egui::Visuals::dark();
+    v.panel_fill = C::from_rgb(0x18, 0x18, 0x18);
+    v.window_fill = C::from_rgb(0x1d, 0x1d, 0x1d);
+    v.extreme_bg_color = C::from_rgb(0x22, 0x22, 0x22);
+    v.faint_bg_color = C::from_rgb(0x1d, 0x1d, 0x1d);
+    v.override_text_color = Some(C::from_rgb(0xd9, 0xd9, 0xd9));
+    v.selection.bg_fill = accent;
+    v.hyperlink_color = C::from_rgb(0xe0, 0x4a, 0x4a);
+    let border = egui::Stroke::new(1.0, C::from_rgb(0x37, 0x37, 0x37));
+    v.widgets.noninteractive.bg_stroke = border;
+    v.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, C::from_rgb(0xaa, 0xaa, 0xaa));
+    for (w, bg) in [
+        (&mut v.widgets.inactive, C::from_rgb(0x4b, 0x4b, 0x4b)),
+        (&mut v.widgets.hovered, C::from_rgb(0x5a, 0x5a, 0x5a)),
+        (&mut v.widgets.active, accent),
+    ] {
+        w.bg_fill = bg;
+        w.weak_bg_fill = bg;
+        w.bg_stroke = egui::Stroke::new(1.0, C::from_rgb(0x55, 0x55, 0x55));
+        w.rounding = egui::Rounding::same(2.0);
+    }
+    v.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, C::from_rgb(0xdd, 0xdd, 0xdd));
+    v.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, C::WHITE);
+    ctx.set_visuals(v);
+    ctx.style_mut(|s| {
+        s.text_styles = [
+            (TextStyle::Heading, FontId::new(18.0, Proportional)),
+            (TextStyle::Body, FontId::new(14.0, Proportional)),
+            (TextStyle::Button, FontId::new(14.0, Proportional)),
+            (TextStyle::Small, FontId::new(12.0, Proportional)),
+            (TextStyle::Monospace, FontId::new(13.0, egui::FontFamily::Monospace)),
+        ]
+        .into();
+        s.spacing.item_spacing = egui::vec2(8.0, 8.0);
+        s.spacing.button_padding = egui::vec2(10.0, 4.0);
+    });
 }

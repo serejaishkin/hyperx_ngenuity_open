@@ -1,6 +1,6 @@
 [package]
 name = "hyperx-ngenuity-open"
-version = "0.2.57"
+version = "0.2.60"
 edition = "2021"
 authors = ["serejaishkin"]
 license = "MIT"
@@ -48,6 +48,8 @@ windows = { version = "0.58", features = [
     "Win32_Devices_DeviceAndDriverInstallation",
     "Win32_Devices_HumanInterfaceDevice",
     "Win32_Storage_FileSystem",
+    "Win32_UI_Shell",
+    "Win32_Foundation",
 ] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
