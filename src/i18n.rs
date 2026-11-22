@@ -40,6 +40,11 @@ const RU: &[(&str, &str)] = &[
     ("Apply to Tray Now", "Применить к трею"), ("Save Tray Icon Config", "Сохранить настройки иконки"),
     ("Reset to Default", "Сбросить по умолчанию"), ("Voice Notifications", "Голосовые оповещения"),
     ("Apply Voice Settings", "Применить настройки голоса"),
+    ("Fallback audio devices", "Резервные аудиоустройства"), ("Headset audio devices", "Устройства гарнитуры"),
+    ("— not selected —", "— не выбрано —"), ("Fallback speakers", "Резервные динамики"),
+    ("Fallback microphone", "Резервный микрофон"), ("Headset speakers", "Динамики гарнитуры"),
+    ("Headset microphone", "Микрофон гарнитуры"), ("Auto-switch to fallback devices", "Автоматическое переключение"),
+    ("Refresh device list", "Обновить список устройств"),
     ("Save", "Сохранить"), ("Active", "Активен"), ("Muted", "Выключен"), ("OFF - No connection", "OFF — нет подключения"),
 ];
 

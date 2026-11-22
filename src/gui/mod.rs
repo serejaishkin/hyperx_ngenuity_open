@@ -1037,59 +1037,73 @@ hold=Play/Pause"));
         discord_tab::show(ui, &mut self.config.discord, self.discord_connected, &mut self.needs_save, &mut self.recording_keybind, &mut self.keybind_capture);
     }
 
+    fn scan_audio_devices(&mut self) {
+        self.last_audio_device_scan = Instant::now();
+        match crate::system_audio::get_audio_devices() {
+            Ok(devices) => {
+                self.audio_inputs = devices.iter().filter(|d| d.is_input).cloned().collect();
+                self.audio_devices = devices.into_iter().filter(|d| d.is_output).collect();
+            }
+            Err(e) => log::error!("[GUI] Audio scan failed: {}", e),
+        }
+    }
+
+    /// Dropdown of the system audio devices; stores the device id in `value`.
+    fn audio_picker(ui: &mut egui::Ui, id: &str, none_label: &str, list: &[crate::system_audio::AudioDevice], value: &mut Option<String>) -> bool {
+        let before = value.clone();
+        let current = match value.as_deref() {
+            None => none_label.to_string(),
+            Some(v) => list.iter().find(|d| d.id == v).map(|d| d.name.clone()).unwrap_or_else(|| v.to_string()),
+        };
+        egui::ComboBox::from_id_source(id)
+            .width(360.0)
+            .selected_text(current)
+            .show_ui(ui, |ui| {
+                ui.selectable_value(value, None, none_label);
+                for d in list {
+                    ui.selectable_value(value, Some(d.id.clone()), d.name.clone());
+                }
+            });
+        *value != before
+    }
+
     fn show_settings_audio(&mut self, ui: &mut egui::Ui) {
-        ui.heading(self.i18n.t("Audio Settings"));
+        if self.audio_devices.is_empty() && self.audio_inputs.is_empty() && self.last_audio_device_scan.elapsed() >= Duration::from_secs(2) {
+            self.scan_audio_devices();
+        }
+        section_title(ui, &self.i18n.t("Fallback audio devices"));
+        let none = self.i18n.t("— not selected —");
+        let (outs, ins) = (self.audio_devices.clone(), self.audio_inputs.clone());
+        let mut changed = false;
+        let rows = [
+            (self.i18n.t("Fallback speakers"), 0u8),
+            (self.i18n.t("Fallback microphone"), 1),
+            (self.i18n.t("Headset speakers"), 2),
+            (self.i18n.t("Headset microphone"), 3),
+        ];
+        for (title, kind) in rows {
+            if kind == 2 {
+                section_title(ui, &self.i18n.t("Headset audio devices"));
+            }
+            let (list, slot) = match kind {
+                0 => (&outs, &mut self.config.audio.fallback_output_device),
+                1 => (&ins, &mut self.config.audio.fallback_input_device),
+                2 => (&outs, &mut self.config.audio.headset_output_device),
+                _ => (&ins, &mut self.config.audio.headset_input_device),
+            };
+            changed |= setting_row(ui, &title, |ui| Self::audio_picker(ui, &format!("aud{}", kind), &none, list, slot));
+        }
         ui.separator();
-        
-        ui.label("Fallback audio devices (auto-switch when headset disconnected):");
-        ui.add_space(10.0);
-        
-        ui.label("Fallback output device:");
-        let mut output_device = self.config.audio.fallback_output_device.clone().unwrap_or_default();
-        if ui.text_edit_singleline(&mut output_device).changed() {
-            self.config.audio.fallback_output_device = if output_device.is_empty() { None } else { Some(output_device) };
+        if setting_row(ui, &self.i18n.t("Auto-switch to fallback devices"), |ui| ui.checkbox(&mut self.config.audio.auto_switch_audio, "").changed()) {
+            changed = true;
+        }
+        ui.add_space(8.0);
+        if ui.button(self.i18n.t("Refresh device list")).clicked() {
+            self.scan_audio_devices();
+        }
+        if changed {
             self.needs_save = true;
         }
-        
-        ui.add_space(10.0);
-        
-        ui.label("Fallback input device:");
-        let mut input_device = self.config.audio.fallback_input_device.clone().unwrap_or_default();
-        if ui.text_edit_singleline(&mut input_device).changed() {
-            self.config.audio.fallback_input_device = if input_device.is_empty() { None } else { Some(input_device) };
-            self.needs_save = true;
-        }
-        
-        ui.add_space(10.0);
-        
-        ui.separator();
-        ui.label("Headset audio devices (switch back on reconnect):");
-        ui.add_space(10.0);
-        
-        ui.label("Headset output device:");
-        let mut headset_output = self.config.audio.headset_output_device.clone().unwrap_or_default();
-        if ui.text_edit_singleline(&mut headset_output).changed() {
-            self.config.audio.headset_output_device = if headset_output.is_empty() { None } else { Some(headset_output) };
-            self.needs_save = true;
-        }
-        
-        ui.add_space(10.0);
-        
-        ui.label("Headset input device:");
-        let mut headset_input = self.config.audio.headset_input_device.clone().unwrap_or_default();
-        if ui.text_edit_singleline(&mut headset_input).changed() {
-            self.config.audio.headset_input_device = if headset_input.is_empty() { None } else { Some(headset_input) };
-            self.needs_save = true;
-        }
-        
-        ui.add_space(10.0);
-        
-        if ui.checkbox(&mut self.config.audio.auto_switch_audio, "Auto-switch to fallback devices").changed() {
-            self.needs_save = true;
-        }
-        
-        ui.add_space(20.0);
-        ui.label("Note: Enter device ID (Windows PowerShell AudioDevice ID, Linux wpctl ID, macOS device name)");
     }
 
     fn show_settings_debug(&mut self, ui: &mut egui::Ui) {
