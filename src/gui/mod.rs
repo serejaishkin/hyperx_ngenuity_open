@@ -655,63 +655,50 @@ impl HyperXApp {
 
     fn show_settings_headset(&mut self, ui: &mut egui::Ui) {
         use crate::input::GLOBAL_MUTE_HANDLER;
+        let t = |en: &str, ru: &str| self.i18n.pick(en, ru);
+        let (min_u, ms_u) = (t("min", "мин"), t("ms", "мс"));
+        section_title(ui, &t("Headset", "Гарнитура"));
 
-        ui.heading(self.i18n.t("Headset Settings"));
-        ui.separator();
-
-        if ui.checkbox(&mut self.config.device.sidetone, self.i18n.t("Sidetone (hear yourself)")).changed() {
+        if setting_row_d(ui, &t("App enabled", "Приложение включено"), &t("Enable headset control", "Включить управление гарнитурой"),
+            |ui| ui.checkbox(&mut self.config.enabled, "").changed()) {
+            self.needs_save = true;
+        }
+        if setting_row_d(ui, &t("Sidetone", "Сайдтон"), &t("Hear your own microphone in the headset", "Слышать свой микрофон в гарнитуре"),
+            |ui| ui.checkbox(&mut self.config.device.sidetone, "").changed()) {
             self.needs_save = true;
             self.device_state.sidetone = self.config.device.sidetone;
-            if let Some(tx) = &self.device_cmd_tx {
-                let _ = tx.send(crate::DeviceCommand::SetSidetone(self.config.device.sidetone));
-            }
+            if let Some(tx) = &self.device_cmd_tx { let _ = tx.send(crate::DeviceCommand::SetSidetone(self.config.device.sidetone)); }
         }
-        if ui.checkbox(&mut self.config.device.voice_prompts, self.i18n.t("Voice prompts")).changed() {
+        if setting_row_d(ui, &t("Voice prompts", "Голосовые подсказки"), &t("Remember the headset's voice prompt setting", "Запомнить настройку голосовых подсказок гарнитуры"),
+            |ui| ui.checkbox(&mut self.config.device.voice_prompts, "").changed()) {
             self.needs_save = true;
-            if let Some(tx) = &self.device_cmd_tx {
-                let _ = tx.send(crate::DeviceCommand::SetVoicePrompts(self.config.device.voice_prompts));
-            }
+            if let Some(tx) = &self.device_cmd_tx { let _ = tx.send(crate::DeviceCommand::SetVoicePrompts(self.config.device.voice_prompts)); }
         }
-        if ui
-            .checkbox(
-                &mut self.config.device.sidetone_play_pause,
-                "Sidetone button on headset → Play/Pause",
-            )
-            .changed()
-        {
+        if setting_row_d(ui, &t("Auto shutdown", "Авто-выключение"), &t("0 — timer off", "0 — таймер выключен"), |ui| {
+            let r = ui.add(egui::DragValue::new(&mut self.config.device.auto_shutdown_minutes).range(0..=60).suffix(format!(" {min_u}")));
+            r.drag_stopped() || (r.lost_focus() && r.changed())
+        }) {
             self.needs_save = true;
+            if let Some(tx) = &self.device_cmd_tx { let _ = tx.send(crate::DeviceCommand::SetAutoShutdown(self.config.device.auto_shutdown_minutes)); }
         }
-        ui.horizontal(|ui| {
-            ui.label(self.i18n.t("Auto-shutdown:"));
-            ui.add(egui::Slider::new(&mut self.config.device.auto_shutdown_minutes, 0..=60).text("min"));
-            if ui.button(self.i18n.t("Apply")).clicked() {
-                self.needs_save = true;
-                if let Some(tx) = &self.device_cmd_tx {
-                    let _ = tx.send(crate::DeviceCommand::SetAutoShutdown(self.config.device.auto_shutdown_minutes));
-                }
-            }
-        });
 
-        ui.separator();
-        ui.heading(self.i18n.t("Mute Button"));
-        ui.label(self.i18n.t("Headset mute button mode:"));
+        section_title(ui, &t("Mute button", "Кнопка мьюта"));
         let prev_mode = self.config.input.mute_button_mode;
-        ui.group(|ui| {
-            ui.horizontal(|ui| {
-                ui.selectable_value(&mut self.config.input.mute_button_mode, MuteButtonMode::Standard, self.i18n.t("Standard
-(MicMute)"));
-                ui.selectable_value(&mut self.config.input.mute_button_mode, MuteButtonMode::MediaPlayPause, self.i18n.t("Play/Pause"));
+        let modes = [
+            (MuteButtonMode::Standard, t("Standard (MicMute)", "Стандартный (Микр.мьют)")),
+            (MuteButtonMode::MediaPlayPause, t("Play/Pause", "Воспр./Пауза")),
+            (MuteButtonMode::SmartDouble, t("Smart: single = mute / double = play/pause", "Умный: одно нажатие — мьют / двойное — воспр./пауза")),
+            (MuteButtonMode::SmartHold, t("Smart: short = play/pause / hold = mute", "Умный: короткое — воспр./пауза / удержание — мьют")),
+            (MuteButtonMode::HoldPlayPause, t("Smart: short = mute / hold = play/pause", "Умный: короткое — мьют / удержание — воспр./пауза")),
+        ];
+        let cur_name = modes.iter().find(|(m, _)| *m == prev_mode).map(|(_, n)| n.clone()).unwrap_or_default();
+        setting_row_d(ui, &t("Mode", "Режим"), &t("Headset button behaviour", "Поведение кнопки гарнитуры"), |ui| {
+            egui::ComboBox::from_id_source("mute_mode").width(380.0).selected_text(cur_name).show_ui(ui, |ui| {
+                for (m, name) in &modes {
+                    ui.selectable_value(&mut self.config.input.mute_button_mode, *m, name.clone());
+                }
             });
-            ui.horizontal(|ui| {
-                ui.selectable_value(&mut self.config.input.mute_button_mode, MuteButtonMode::SmartDouble, self.i18n.t("Smart: single=mute
-double=Play/Pause"));
-                ui.selectable_value(&mut self.config.input.mute_button_mode, MuteButtonMode::SmartHold, self.i18n.t("Smart: short=Play/Pause
-hold=mute"));
-            });
-            ui.horizontal(|ui| {
-                ui.selectable_value(&mut self.config.input.mute_button_mode, MuteButtonMode::HoldPlayPause, self.i18n.t("Smart: short=mute
-hold=Play/Pause"));
-            });
+            false
         });
         if self.config.input.mute_button_mode != prev_mode {
             self.needs_save = true;
@@ -723,68 +710,72 @@ hold=Play/Pause"));
                 MuteButtonMode::HoldPlayPause => crate::input::MuteButtonMode::HoldPlayPause,
             });
         }
-        ui.separator();
-        match self.config.input.mute_button_mode {
-            MuteButtonMode::Standard => { ui.label(self.i18n.t("Always toggles microphone in Discord.")); }
-            MuteButtonMode::MediaPlayPause => { ui.label(self.i18n.t("Always pauses/plays media.")); ui.small(self.i18n.t("Spotify, YouTube, VLC")); }
-            MuteButtonMode::SmartDouble => { ui.label(self.i18n.t("Single click (<400ms) → MicMute")); ui.label(self.i18n.t("Double click (<400ms) → Play/Pause")); ui.colored_label(egui::Color32::YELLOW, self.i18n.t("(!) 400ms delay")); }
-            MuteButtonMode::SmartHold => { ui.label(self.i18n.t("Short press (<500ms) → Play/Pause")); ui.label(self.i18n.t("Long hold (>500ms) → MicMute")); ui.colored_label(egui::Color32::YELLOW, self.i18n.t("(!) Requires down/up HID events")); }
-            MuteButtonMode::HoldPlayPause => { ui.label(self.i18n.t("Short press (<500ms) → MicMute")); ui.label(self.i18n.t("Long hold (>500ms) → Play/Pause")); ui.colored_label(egui::Color32::YELLOW, self.i18n.t("(!) Requires down/up HID events")); }
+        if setting_row_d(ui, &t("Sidetone button = Play/Pause", "Кнопка сайдтона = Воспр./Пауза"),
+            &t("The headset's sidetone button pauses music while the sidetone state stays unchanged.", "Кнопка сайдтона на гарнитуре ставит музыку на паузу, а состояние сайдтона остаётся прежним."),
+            |ui| ui.checkbox(&mut self.config.device.sidetone_play_pause, "").changed()) {
+            self.needs_save = true;
+            GLOBAL_MUTE_HANDLER.set_sidetone_play_pause(self.config.device.sidetone_play_pause);
         }
-        if ui.button(self.i18n.t("Test: emulate press")).clicked() {
-            if self.config.input.mute_button_mode == MuteButtonMode::SmartHold || self.config.input.mute_button_mode == MuteButtonMode::HoldPlayPause {
-                ui.label("Test not available for hold modes");
-            } else {
-                GLOBAL_MUTE_HANDLER.on_mute_toggled(true);
-            }
+        if setting_row_d(ui, &t("Double-tap delay", "Задержка двойного нажатия"), &t("Smart double-click interval", "Интервал умного двойного клика"),
+            |ui| ui.add(egui::DragValue::new(&mut self.config.double_tap_ms).range(100..=1000).suffix(format!(" {ms_u}"))).changed()) {
+            self.needs_save = true;
         }
     }
     fn show_settings_voice(&mut self, ui: &mut egui::Ui) {
-        ui.heading(self.i18n.t("Voice Notifications"));
-        if ui.checkbox(&mut self.config.voice.enabled, self.i18n.t("Enable voice")).changed() {
-            self.needs_save = true;
-            log::info!("[GUI] Voice enabled changed to {}", self.config.voice.enabled);
-        }
-        if self.config.voice.enabled {
-            ui.horizontal(|ui| {
-                if ui.checkbox(&mut self.config.voice.on_battery_low, self.i18n.t("Battery low")).changed() { self.needs_save = true; }
-                if ui.checkbox(&mut self.config.voice.on_charging, self.i18n.t("Charging")).changed() { self.needs_save = true; }
-                if ui.checkbox(&mut self.config.voice.on_full_charge, self.i18n.t("Full charge")).changed() { self.needs_save = true; }
-            });
-            ui.horizontal(|ui| {
-                if ui.checkbox(&mut self.config.voice.on_connected, self.i18n.t("Connected")).changed() { self.needs_save = true; }
-                if ui.checkbox(&mut self.config.voice.on_disconnected, self.i18n.t("Disconnected")).changed() { self.needs_save = true; }
-                if ui.checkbox(&mut self.config.voice.on_button_check, self.i18n.t("Button check")).changed() { self.needs_save = true; }
-            });
-            if ui.checkbox(&mut self.config.voice.exact_percent, self.i18n.t("Exact percent")).changed() { self.needs_save = true; }
-            ui.separator();
-            if ui.checkbox(&mut self.config.voice.low_say_percent, self.i18n.t("Say percent on low battery")).changed() { self.needs_save = true; }
-            ui.label(self.i18n.t("Warn at levels"));
-            ui.horizontal(|ui| {
-                for lvl in [50u8, 40, 30, 20, 10] {
-                    let mut on = self.config.voice.low_levels.contains(&lvl);
-                    if ui.checkbox(&mut on, format!("{lvl}%")).changed() {
-                        if on { self.config.voice.low_levels.push(lvl); } else { self.config.voice.low_levels.retain(|l| *l != lvl); }
-                        self.config.voice.low_levels.sort_unstable_by(|a, b| b.cmp(a));
-                        self.needs_save = true;
-                    }
+        let t = |en: &str, ru: &str| self.i18n.pick(en, ru);
+        section_title(ui, &t("Built-in WAV voices", "Встроенные WAV-голоса"));
+        ui.label(egui::RichText::new(t(
+            "The project contains all battery voice prompts from bat_000.wav to bat_100.wav (0% to 100%), as well as WAV files for charging, full charge and low battery.",
+            "Проект содержит все голосовые подсказки батареи от bat_000.wav до bat_100.wav (0% до 100%), а также WAV-файлы зарядки, полной зарядки и низкого заряда батареи.",
+        )).size(12.0).color(egui::Color32::from_rgb(0x88, 0x88, 0x88)));
+        let mut ch = false;
+        ch |= setting_row_d(ui, &t("Enable voice", "Включить голос"), &t("Enable voice notifications about battery and status", "Включить голосовые уведомления о батарее/статусе"),
+            |ui| ui.checkbox(&mut self.config.voice.enabled, "").changed());
+        ch |= setting_row_d(ui, &t("Battery low", "Батарея разряжена"), &t("Play low_battery.wav", "Воспроизвести low_battery.wav"),
+            |ui| ui.checkbox(&mut self.config.voice.on_battery_low, "").changed());
+        ch |= setting_row_d(ui, &t("Say the percentage", "Называть процент"), &t("After \"battery low\" say the remaining percentage", "После фразы «батарея разряжена» произносить остаток в процентах"),
+            |ui| ui.checkbox(&mut self.config.voice.low_say_percent, "").changed());
+        let lvl_title = t("Warn at levels", "Предупреждать на уровнях");
+        let lvl_desc = t("Each level fires once per discharge", "Каждый уровень срабатывает один раз за разряд");
+        ch |= setting_row_d(ui, &lvl_title, &lvl_desc, |ui| {
+            let mut c = false;
+            for lvl in [10u8, 20, 30, 40, 50] {
+                let mut on = self.config.voice.low_levels.contains(&lvl);
+                if ui.checkbox(&mut on, format!("{lvl}%")).changed() {
+                    if on { self.config.voice.low_levels.push(lvl); } else { self.config.voice.low_levels.retain(|l| *l != lvl); }
+                    self.config.voice.low_levels.sort_unstable_by(|a, b| b.cmp(a));
+                    c = true;
                 }
-            });
-            ui.horizontal(|ui| {
-                ui.label(self.i18n.t("Repeat at or below"));
-                let cur = self.config.voice.low_critical_percent;
-                egui::ComboBox::from_id_salt("low_crit")
-                    .selected_text(if cur == 0 { self.i18n.t("Off") } else { format!("{cur}%") })
-                    .show_ui(ui, |ui| {
-                        for v in [0u8, 30, 20, 10, 5] {
-                            let label = if v == 0 { self.i18n.t("Off") } else { format!("{v}%") };
-                            if ui.selectable_value(&mut self.config.voice.low_critical_percent, v, label).changed() { self.needs_save = true; }
-                        }
-                    });
-            });
-        }
-        if ui.button(self.i18n.t("Apply Voice Settings")).clicked() {
-            log::info!("[GUI] Apply Voice Settings clicked");
+            }
+            c
+        });
+        let off = t("Off", "Выкл");
+        ch |= setting_row_d(ui, &t("Repeat at the minimum", "Дублировать на минимуме"), &t("At this level and below the warning sounds twice", "На этом уровне и ниже предупреждение звучит дважды"), |ui| {
+            let cur = self.config.voice.low_critical_percent;
+            let mut c = false;
+            egui::ComboBox::from_id_source("low_crit")
+                .selected_text(if cur == 0 { off.clone() } else { format!("{cur}%") })
+                .show_ui(ui, |ui| {
+                    for v in [0u8, 30, 20, 10, 5] {
+                        let label = if v == 0 { off.clone() } else { format!("{v}%") };
+                        if ui.selectable_value(&mut self.config.voice.low_critical_percent, v, label).changed() { c = true; }
+                    }
+                });
+            c
+        });
+        ch |= setting_row_d(ui, &t("Charging", "Зарядка"), &t("Play charging.wav", "Воспроизвести charging.wav"),
+            |ui| ui.checkbox(&mut self.config.voice.on_charging, "").changed());
+        ch |= setting_row_d(ui, &t("Full charge", "Полная зарядка"), &t("Play full_charge.wav", "Воспроизвести full_charge.wav"),
+            |ui| ui.checkbox(&mut self.config.voice.on_full_charge, "").changed());
+        ch |= setting_row_d(ui, &t("Connect notification", "Уведомление о подключении"), &t("Only available voice events are used", "Используются только доступные голосовые события"),
+            |ui| ui.checkbox(&mut self.config.voice.on_connected, "").changed());
+        ch |= setting_row_d(ui, &t("Disconnect notification", "Уведомление об отключении"), &t("Only available voice events are used", "Используются только доступные голосовые события"),
+            |ui| ui.checkbox(&mut self.config.voice.on_disconnected, "").changed());
+        ch |= setting_row_d(ui, &t("Button check", "Проверка кнопки"), &t("Allow the battery check (voice)", "Разрешить проверку батареи (голос)"),
+            |ui| ui.checkbox(&mut self.config.voice.on_button_check, "").changed());
+        ch |= setting_row_d(ui, &t("Battery clip mode", "Режим клипа батареи"), &t("The nearest built-in clip is used", "Используется ближайший встроенный клип"),
+            |ui| ui.checkbox(&mut self.config.voice.exact_percent, "").changed());
+        if ch {
             self.needs_save = true;
             crate::audio::voice::update_config(self.config.voice.clone());
         }
@@ -1071,67 +1062,81 @@ hold=Play/Pause"));
         if self.audio_devices.is_empty() && self.audio_inputs.is_empty() && self.last_audio_device_scan.elapsed() >= Duration::from_secs(2) {
             self.scan_audio_devices();
         }
-        section_title(ui, &self.i18n.t("Fallback audio devices"));
-        let none = self.i18n.t("— not selected —");
+        let t = |en: &str, ru: &str| self.i18n.pick(en, ru);
+        section_title(ui, &t("Fallback audio devices", "Резервные аудиоустройства"));
+        ui.label(egui::RichText::new(t("Switch to the fallback devices automatically when the headset is off or charging.", "Автоматически переключаться на резервные устройства когда гарнитура отключена или на зарядке.")).size(12.0).color(egui::Color32::from_rgb(0x88, 0x88, 0x88)));
+        let none = t("None", "Нет");
+        let auto = t("Auto (find by HyperX name)", "Авто (найти по имени HyperX)");
         let (outs, ins) = (self.audio_devices.clone(), self.audio_inputs.clone());
         let mut changed = false;
         let rows = [
-            (self.i18n.t("Fallback speakers"), 0u8),
-            (self.i18n.t("Fallback microphone"), 1),
-            (self.i18n.t("Headset speakers"), 2),
-            (self.i18n.t("Headset microphone"), 3),
+            (t("Fallback speakers", "Резервные динамики"), t("Use when the headset is off", "Использовать когда гарнитура отключена"), 0u8),
+            (t("Fallback microphone", "Резервный микрофон"), t("Use when the headset is off", "Использовать когда гарнитура отключена"), 1),
+            (t("Headset speakers", "Динамики гарнитуры"), t("Where to return sound when the headset turns on", "Куда вернуть звук, когда гарнитура включилась"), 2),
+            (t("Headset microphone", "Микрофон гарнитуры"), t("Where to return the microphone when the headset turns on", "Куда вернуть микрофон, когда гарнитура включилась"), 3),
         ];
-        for (title, kind) in rows {
-            if kind == 2 {
-                section_title(ui, &self.i18n.t("Headset audio devices"));
-            }
-            let (list, slot) = match kind {
-                0 => (&outs, &mut self.config.audio.fallback_output_device),
-                1 => (&ins, &mut self.config.audio.fallback_input_device),
-                2 => (&outs, &mut self.config.audio.headset_output_device),
-                _ => (&ins, &mut self.config.audio.headset_input_device),
+        for (title, desc, kind) in rows {
+            let (list, slot, lbl) = match kind {
+                0 => (&outs, &mut self.config.audio.fallback_output_device, &none),
+                1 => (&ins, &mut self.config.audio.fallback_input_device, &none),
+                2 => (&outs, &mut self.config.audio.headset_output_device, &auto),
+                _ => (&ins, &mut self.config.audio.headset_input_device, &auto),
             };
-            changed |= setting_row(ui, &title, |ui| Self::audio_picker(ui, &format!("aud{}", kind), &none, list, slot));
+            changed |= setting_row_d(ui, &title, &desc, |ui| Self::audio_picker(ui, &format!("aud{}", kind), lbl, list, slot));
         }
-        ui.separator();
-        if setting_row(ui, &self.i18n.t("Auto-switch to fallback devices"), |ui| ui.checkbox(&mut self.config.audio.auto_switch_audio, "").changed()) {
-            changed = true;
-        }
+        changed |= setting_row_d(ui, &t("Auto-switch", "Автоматическое переключение"), &t("Switch devices automatically", "Переключать устройства автоматически"),
+            |ui| ui.checkbox(&mut self.config.audio.auto_switch_audio, "").changed());
         ui.add_space(8.0);
-        if ui.button(self.i18n.t("Refresh device list")).clicked() {
+        if ui.button(t("Refresh device list", "Обновить список устройств")).clicked() {
             self.scan_audio_devices();
         }
-        if changed {
-            self.needs_save = true;
-        }
+        if changed { self.needs_save = true; }
     }
 
     fn show_settings_debug(&mut self, ui: &mut egui::Ui) {
-        ui.heading(self.i18n.t("Debug"));
-        if ui.checkbox(&mut self.config.debug_logging, self.i18n.t("Debug level (verbose)")).changed() {
-            self.needs_save = true;
-            log::info!("[GUI] Debug level changed to {}", self.config.debug_logging);
-        }
-        if ui.checkbox(&mut self.config.log_to_console, self.i18n.t("Log to console")).changed() {
-            self.needs_save = true;
-            log::info!("[GUI] Log to console changed to {}", self.config.log_to_console);
-        }
-        if ui.checkbox(&mut self.config.log_to_file, self.i18n.t("Log to file (hyperx-ngenuity-open.log)")).changed() {
-            self.needs_save = true;
-            log::info!("[GUI] Log to file changed to {}", self.config.log_to_file);
-        }
-        ui.small(self.i18n.t("Logging changes require restart."));
+        let t = |en: &str, ru: &str| self.i18n.pick(en, ru);
+        let (h, ms_u, s_u) = (t("Debug and logging", "Отладка и логирование"), t("ms", "мс"), t("s", "с"));
+        section_title(ui, &h);
+        let mut ch = false;
+        ch |= setting_row_d(ui, &t("Move app streams", "Переносить потоки приложений"),
+            &t("After the audio device changes, move playing apps to the new device (if music stayed on the old one)", "После смены устройства звука перенести играющие приложения на новое устройство (если музыка осталась на старом)"),
+            |ui| ui.checkbox(&mut self.config.audio.move_app_streams, "").changed());
+        ch |= setting_row_d(ui, &t("Pause between announcements", "Пауза между оповещениями"),
+            &t("How long to wait between two voice messages so they do not overlap (ms)", "Сколько ждать между двумя голосовыми сообщениями, чтобы они не накладывались (мс)"),
+            |ui| { let r = ui.add(egui::DragValue::new(&mut self.config.voice.announce_gap_ms).range(0..=5000).suffix(format!(" {ms_u}"))); r.changed() });
+        ch |= setting_row_d(ui, &t("Headset status polling", "Опрос статуса гарнитуры"),
+            &t("How often to ask whether the headset is on (s). Lower = faster audio switching, but the headset may take longer to sleep", "Как часто спрашивать, включена ли гарнитура (сек). Меньше — быстрее переключение звука, но гарнитура может дольше не засыпать"),
+            |ui| ui.add(egui::DragValue::new(&mut self.config.status_poll_secs).range(1..=60).suffix(format!(" {s_u}"))).changed());
+        ch |= setting_row_d(ui, &t("Delay before audio switch", "Задержка перед переключением звука"),
+            &t("How many seconds the headset must stay off before audio moves to the fallback device (0 = immediately)", "Сколько секунд гарнитура должна оставаться выключенной, прежде чем звук уйдёт на резервное устройство (0 — сразу)"),
+            |ui| ui.add(egui::DragValue::new(&mut self.config.offline_debounce_secs).range(0..=60).suffix(format!(" {s_u}"))).changed());
+        ch |= setting_row_d(ui, &t("Debug log", "Отладочный лог"), &t("Verbose Rust logs", "Подробные логи Rust"),
+            |ui| ui.checkbox(&mut self.config.debug_logging, "").changed());
+        ch |= setting_row_d(ui, &t("Log to console", "Лог в консоль"), "",
+            |ui| ui.checkbox(&mut self.config.log_to_console, "").changed());
+        ch |= setting_row_d(ui, &t("Log to file", "Лог в файл"), &t("Write hyperx-ngenuity-open.log", "Записывать hyperx-ngenuity-open.log"),
+            |ui| ui.checkbox(&mut self.config.log_to_file, "").changed());
+        ui.add_space(6.0);
+        ui.small(t("Logging changes require restart.", "Изменения логов применяются после перезапуска."));
+        if ch { self.needs_save = true; }
     }
 
     fn show_settings_interface(&mut self, ui: &mut egui::Ui) {
-        section_title(ui, &self.i18n.t("Interface and startup"));
-        if setting_row(ui, &self.i18n.t("System notifications"), |ui| ui.checkbox(&mut self.config.desktop_notifications, "").changed()) { self.needs_save = true; }
-        if setting_row(ui, &self.i18n.t("Start with the system"), |ui| ui.checkbox(&mut self.config.start_with_os, "").changed()) { self.needs_save = true; }
-        if setting_row(ui, &self.i18n.t("Start in compact mode"), |ui| ui.checkbox(&mut self.config.start_in_compact_mode, "").changed()) { self.needs_save = true; }
-        if setting_row(ui, &self.i18n.t("Compact mode"), |ui| ui.checkbox(&mut self.config.compact_mode, "").changed()) { self.needs_save = true; }
+        let t = |en: &str, ru: &str| self.i18n.pick(en, ru);
+        section_title(ui, &t("Interface and startup", "Интерфейс и запуск"));
+        let mut ch = false;
+        ch |= setting_row_d(ui, &t("System notifications", "Системные уведомления"),
+            &t("Desktop notifications with the battery level on connect, app start and low battery", "Уведомления Windows с уровнем заряда: при подключении, запуске и низком заряде"),
+            |ui| ui.checkbox(&mut self.config.desktop_notifications, "").changed());
+        ch |= setting_row_d(ui, &t("Start with the system", "Запускать с системой"), &t("Start the app at login", "Запускать приложение при входе в систему"),
+            |ui| ui.checkbox(&mut self.config.start_with_os, "").changed());
+        ch |= setting_row_d(ui, &t("Start in compact mode", "Запускать в компактном режиме"), &t("Open the small window on start", "Открывать маленькое окно при запуске"),
+            |ui| ui.checkbox(&mut self.config.start_in_compact_mode, "").changed());
+        ch |= setting_row_d(ui, &t("Compact mode", "Компактный режим"), &t("Show the compact window instead of the full one", "Показывать компактное окно вместо полного"),
+            |ui| ui.checkbox(&mut self.config.compact_mode, "").changed());
         let mut selected = self.config.language.clone();
-        let label = self.i18n.t("Language");
-        setting_row(ui, &label, |ui| {
+        let lang_title = t("Language", "Язык");
+        setting_row_d(ui, &lang_title, &t("Interface language", "Язык интерфейса"), |ui| {
             egui::ComboBox::from_id_source("lang")
                 .selected_text(if selected == "ru" { "Русский" } else { "English" })
                 .show_ui(ui, |ui| {
@@ -1144,9 +1149,11 @@ hold=Play/Pause"));
             let lang_dir = std::path::PathBuf::from("lang");
             self.config.language = selected.clone();
             self.i18n = crate::i18n::I18n::new(&lang_dir, &selected);
-            self.needs_save = true;
+            ch = true;
         }
+        if ch { self.needs_save = true; }
     }
+
 }
 
 /// Tab with a red underline when selected (matches the Tauri UI).
@@ -1154,6 +1161,25 @@ fn section_title(ui: &mut egui::Ui, text: &str) {
     ui.add_space(8.0);
     ui.label(egui::RichText::new(text.to_uppercase()).size(13.0).color(egui::Color32::from_rgb(0xaa, 0xaa, 0xaa)));
     ui.add_space(4.0);
+}
+
+/// Settings row with a grey description under the title (like `.setting-row` + `.setting-desc`).
+fn setting_row_d(ui: &mut egui::Ui, title: &str, desc: &str, add: impl FnOnce(&mut egui::Ui) -> bool) -> bool {
+    ui.separator();
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.set_min_height(46.0);
+        ui.vertical(|ui| {
+            ui.label(egui::RichText::new(title).size(14.0).color(egui::Color32::from_rgb(0xd5, 0xd5, 0xd5)));
+            if !desc.is_empty() {
+                ui.label(egui::RichText::new(desc).size(12.0).color(egui::Color32::from_rgb(0x88, 0x88, 0x88)));
+            }
+        });
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            changed = add(ui);
+        });
+    });
+    changed
 }
 
 /// One settings row: title on the left, control on the right, separator above (like `.setting-row`).
