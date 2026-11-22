@@ -362,10 +362,19 @@ impl HyperXDevice {
             match api.open_path(info.path()) {
                 Ok(device) => {
                     let packet = build_packet(GET_BATTERY_CMD_ID, &[]);
-                    match write_hid_report(&device, &packet) {
-                        Ok(_) => {
+                    // Try a few times; on each try drain reports until the battery answer shows up
+                    // (the dongle also sends unrelated frames, e.g. 06 FF BB 01 ..., which must be skipped).
+                    let mut wrote = false;
+                    for attempt in 1..=3 {
+                        if let Err(e) = write_hid_report(&device, &packet) {
+                            log::debug!("[HID] Battery probe write failed: {}", e);
+                            break;
+                        }
+                        wrote = true;
+                        let deadline = std::time::Instant::now() + Duration::from_millis(1500);
+                        while std::time::Instant::now() < deadline {
                             let mut buf = [0u8; 256];
-                            match device.read_timeout(&mut buf, 2000) {
+                            match device.read_timeout(&mut buf, 300) {
                                 Ok(len) if len >= 8 && is_valid_response(&buf, len, GET_BATTERY_CMD_ID) => {
                                     self.device = Some(device);
                                     self.state.connected = true;
@@ -373,11 +382,14 @@ impl HyperXDevice {
                                     log::info!("[HID] Connected: battery={}%, raw={:02X?}", self.state.battery_percent, &buf[0..16.min(len)]);
                                     return Ok(());
                                 }
-                                Ok(len) => log::debug!("[HID] Battery probe invalid: len={} raw={:02X?}", len, &buf[0..16.min(len)]),
-                                Err(e) => log::debug!("[HID] Battery probe read failed: {}", e),
+                                Ok(0) => {}
+                                Ok(len) => log::info!("[HID] Probe attempt {}: skipping frame len={} raw={:02X?}", attempt, len, &buf[0..16.min(len)]),
+                                Err(e) => { log::debug!("[HID] Battery probe read failed: {}", e); break; }
                             }
                         }
-                        Err(e) => log::debug!("[HID] Battery probe write failed: {}", e),
+                    }
+                    if wrote {
+                        log::info!("[HID] No battery answer on {:04X}:{:04X} (path {:?})", info.usage_page(), info.usage(), info.path());
                     }
                 }
                 Err(e) => {
