@@ -4,6 +4,23 @@ use crate::i18n::I18n;
 use eframe::egui;
 use std::sync::Arc;
 
+const TXT: &[(&str, &str)] = &[
+    ("Create application", "Создать приложение"),
+    ("Connection code", "Код подключения"),
+    ("One “ID:secret” line — copy it here and paste it on another computer or OS (stored like a password, do not share it)", "Одна строка «ID:секрет» — скопируйте здесь и вставьте на другом компьютере или в другой ОС (хранится как пароль, не показывайте другим)"),
+    ("Copy", "Скопировать"),
+    ("Apply", "Применить"),
+    ("How to create a Discord application from scratch", "Как создать приложение Discord с нуля"),
+    ("Needed once, free, takes about 2 minutes. Ignore the verification, team and 100-server items — they are not needed for personal use.", "Нужно один раз, бесплатно, занимает около 2 минут. Пункты про верификацию, команду и 100 серверов игнорируйте — для личного использования они не нужны."),
+    ("Click “Create application” above (opens discord.com/developers/applications) and sign in to your Discord account.", "Нажмите «Создать приложение» выше (откроется discord.com/developers/applications) и войдите в свой аккаунт Discord."),
+    ("Top right — “New Application”. Enter any name, e.g. HyperHeadset, tick the agreement box and click “Create”.", "Справа вверху — «New Application». Введите любое имя, например HyperHeadset, поставьте галочку согласия, нажмите «Create»."),
+    ("On the “General Information” tab click “Copy” next to “Application ID” and paste it into the “Application ID” field above.", "Вкладка «General Information»: рядом с «Application ID» нажмите «Copy» и вставьте в поле «ID приложения» выше."),
+    ("In the left menu open “OAuth2”. In the “Redirects” block click “Add Redirect”, enter http://localhost, then “Save Changes” at the bottom of the page.", "В меню слева откройте «OAuth2». В блоке «Redirects» нажмите «Add Redirect», впишите http://localhost, затем внизу страницы «Save Changes»."),
+    ("On the same page, in the “Client Secret” block click “Reset Secret”, confirm (Discord may ask for your password or 2FA code), click “Copy”. The secret is shown once; if you lose it, just reset it again. Paste it into the “Client Secret” field above.", "На той же странице в блоке «Client Secret» нажмите «Reset Secret», подтвердите (Discord может спросить пароль или код 2FA), нажмите «Copy». Секрет показывается один раз; потеряли — просто сбросьте ещё раз. Вставьте его в поле «Client Secret» выше."),
+    ("Choose “Direct” as the Discord mode and click “Save”.", "Режим Discord выберите «Прямой», нажмите «Сохранить»."),
+    ("Start Discord. An access request appears in its window — click “Authorize”. The status above becomes “connected”. Needed once per computer.", "Запустите Discord. В его окне появится запрос доступа — нажмите «Авторизовать». Статус выше станет «подключено». Это нужно один раз на каждый компьютер."),
+];
+
 pub fn show(
     ui: &mut egui::Ui,
     i18n: &I18n,
@@ -101,8 +118,40 @@ pub fn show(
             |ui| ui.checkbox(&mut config.direct.show_battery, "").changed());
         ch |= setting_row_d(ui, &t("Show mute status", "Показывать статус мьюта"), &t("Microphone state in the Discord status", "Состояние микрофона в статусе Discord"),
             |ui| ui.checkbox(&mut config.direct.show_mute_status, "").changed());
-        ui.add_space(8.0);
-        ui.hyperlink_to(t("How to get an Application ID", "Как получить ID приложения"), "https://discord.com/developers/applications");
+        setting_row_d(ui, &t(TXT[0].0, TXT[0].1), "", |ui| {
+            if ui.button(t(TXT[0].0, TXT[0].1)).clicked() {
+                ui.ctx().open_url(egui::OpenUrl::new_tab("https://discord.com/developers/applications"));
+            }
+            false
+        });
+        // "ID:secret" connection code: copy / apply
+        setting_row_d(ui, &t(TXT[1].0, TXT[1].1), &t(TXT[2].0, TXT[2].1), |ui| {
+            let code = format!("{}:{}", config.direct.app_id, config.direct.client_secret);
+            if ui.button(t(TXT[3].0, TXT[3].1)).clicked() && code.len() > 1 {
+                ui.ctx().copy_text(code);
+            }
+            if ui.button(t(TXT[4].0, TXT[4].1)).clicked() {
+                if let Some(pasted) = crate::gui::clipboard_text() {
+                    if let Some((id, secret)) = pasted.trim().split_once(':') {
+                        config.direct.app_id = id.trim().to_string();
+                        config.direct.client_secret = secret.trim().to_string();
+                        ch = true;
+                    }
+                }
+            }
+            false
+        });
+        ui.separator();
+        ui.add_space(4.0);
+        ui.label(egui::RichText::new(t(TXT[5].0, TXT[5].1)).size(14.0).color(egui::Color32::from_rgb(0xd5, 0xd5, 0xd5)));
+        ui.label(egui::RichText::new(t(TXT[6].0, TXT[6].1)).size(12.0).color(egui::Color32::from_rgb(0x88, 0x88, 0x88)));
+        ui.add_space(4.0);
+        for (n, (en, ru)) in TXT[7..].iter().enumerate() {
+            ui.horizontal_wrapped(|ui| {
+                ui.add_space(8.0);
+                ui.label(egui::RichText::new(format!("{}. {}", n + 1, t(en, ru))).size(12.0).color(egui::Color32::from_rgb(0xc0, 0xc0, 0xc0)));
+            });
+        }
     }
 
     if ch {

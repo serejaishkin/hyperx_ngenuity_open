@@ -378,7 +378,7 @@ impl HyperXApp {
                 ui.horizontal(|ui| {
                     ui.label("🔊");
                     if self.audio_devices.is_empty() {
-                        ui.add_enabled(false, egui::Button::new("Аудиоустройства не найдены"));
+                        ui.add_enabled(false, egui::Button::new(self.i18n.pick("No audio devices found", "Аудиоустройства не найдены")));
                     } else {
                         let selected_name = self.selected_audio_device.as_ref()
                             .and_then(|id| self.audio_devices.iter().find(|d| &d.id == id))
@@ -407,7 +407,7 @@ impl HyperXApp {
                             });
                     }
 
-                    if ui.small_button("↻").on_hover_text("Обновить аудиоустройства").clicked() {
+                    if ui.small_button("↻").on_hover_text(self.i18n.pick("Refresh audio devices", "Обновить аудиоустройства")).clicked() {
                         self.audio_devices.clear();
                         self.selected_audio_device = None;
                         self.last_audio_device_scan = Instant::now() - Duration::from_secs(1);
@@ -420,7 +420,7 @@ impl HyperXApp {
                     let out_name = self.config.audio.fallback_output_device.as_ref()
                         .and_then(|id| self.audio_devices.iter().find(|d| &d.id == id))
                         .map(|d| d.name.clone())
-                        .unwrap_or_else(|| "— не задан —".to_string());
+                        .unwrap_or_else(|| self.i18n.pick("— not set —", "— не задан —"));
                     ui.horizontal(|ui| {
                         ui.label("↩🔊");
                         egui::ComboBox::from_id_salt("compact_fallback_output")
@@ -439,7 +439,7 @@ impl HyperXApp {
                     let in_name = self.config.audio.fallback_input_device.as_ref()
                         .and_then(|id| self.audio_inputs.iter().find(|d| &d.id == id))
                         .map(|d| d.name.clone())
-                        .unwrap_or_else(|| "— не задан —".to_string());
+                        .unwrap_or_else(|| self.i18n.pick("— not set —", "— не задан —"));
                     ui.horizontal(|ui| {
                         ui.label("↩🎙");
                         egui::ComboBox::from_id_salt("compact_fallback_input")
@@ -605,20 +605,7 @@ impl HyperXApp {
     }
 
     fn show_equalizer(&mut self, ui: &mut egui::Ui) {
-        ui.heading(self.i18n.t("Equalizer"));
-        ui.separator();
-
-        ui.horizontal_wrapped(|ui| {
-            ui.label(self.i18n.t("Presets:"));
-            for preset in ["Flat", "Bass Boost", "Bass Cut", "Treble Boost", "Voice Chat", "Gaming"] {
-                if ui.button(preset).clicked() {
-                    self.apply_eq_preset(preset);
-                }
-            }
-        });
-        ui.separator();
-
-        eq_tab::show(ui, &mut self.eq_bands, &mut self.needs_save, self.apo_available, &self.debounced_eq);
+        eq_tab::show(ui, &self.i18n, &mut self.eq_bands, &mut self.needs_save, self.apo_available, &self.debounced_eq);
     }
 
     fn show_settings(&mut self, ui: &mut egui::Ui) {
@@ -1066,6 +1053,35 @@ fn color_row(ui: &mut egui::Ui, title: &str, c: &mut crate::tray::icon::IconColo
             }
         });
     });
+}
+
+/// Plain text from the system clipboard (used to paste the Discord connection code).
+pub(crate) fn clipboard_text() -> Option<String> {
+    #[cfg(windows)]
+    {
+        let out = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-Command", "Get-Clipboard -Raw"])
+            .creation_flags_hidden()
+            .output()
+            .ok()?;
+        return Some(String::from_utf8_lossy(&out.stdout).to_string());
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
+#[cfg(windows)]
+trait HiddenCmd {
+    fn creation_flags_hidden(&mut self) -> &mut Self;
+}
+#[cfg(windows)]
+impl HiddenCmd for std::process::Command {
+    fn creation_flags_hidden(&mut self) -> &mut Self {
+        use std::os::windows::process::CommandExt;
+        self.creation_flags(0x0800_0000)
+    }
 }
 
 pub(crate) fn section_title(ui: &mut egui::Ui, text: &str) {
