@@ -374,11 +374,16 @@ impl HyperXDevice {
                                 _ => log::info!("[HID] Dongle gave no status reply on {:04X}", info.usage_page()),
                             }
                         }
+                        // Same priming the working refresh path does before each command.
+                        let mut prime = [0u8; 64];
+                        prime[0] = 0x06;
+                        let _ = device.get_input_report(&mut prime);
                         if let Err(e) = write_hid_report(&device, &packet) {
                             log::debug!("[HID] Battery probe write failed: {}", e);
                             break;
                         }
                         wrote = true;
+                        thread::sleep(RESPONSE_DELAY);
                         let deadline = std::time::Instant::now() + Duration::from_millis(1500);
                         while std::time::Instant::now() < deadline {
                             let mut buf = [0u8; 256];
