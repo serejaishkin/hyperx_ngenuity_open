@@ -54,6 +54,11 @@ pub struct I18n {
 }
 
 impl I18n {
+    /// Inline bilingual text: Russian when the UI language is `ru`, otherwise English.
+    pub fn pick(&self, en: &str, ru: &str) -> String {
+        if self.lang == "ru" { ru.to_string() } else { en.to_string() }
+    }
+
     pub fn new<P: AsRef<Path>>(_path: P, lang: &str) -> Self {
         Self { strings: HashMap::new(), lang: lang.to_string() }
     }

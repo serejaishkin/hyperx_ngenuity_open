@@ -1,71 +1,78 @@
+use crate::audio::debounce::DebouncedEQ;
+use crate::i18n::I18n;
 use eframe::egui;
 use std::sync::Arc;
-use crate::audio::debounce::DebouncedEQ;
 
-const BAND_FREQS: [&str; 10] = [
-    "32Hz", "64Hz", "125Hz", "250Hz", "500Hz",
-    "1kHz", "2kHz", "4kHz", "8kHz", "16kHz"
+const BAND_FREQS: [&str; 10] = ["32", "64", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"];
+
+/// (English, Russian, bands) — same presets as the Tauri UI.
+const PRESETS: &[(&str, &str, [f32; 10])] = &[
+    ("Flat", "Плоский", [0.0; 10]),
+    ("Bass Boost", "Усиление басов", [6.0, 4.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+    ("Bass Cut", "Ослабление басов", [-6.0, -4.0, -2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+    ("Treble Boost", "Усиление верхних", [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 4.0, 6.0, 8.0]),
+    ("Voice Chat", "Голосовой чат", [-2.0, 0.0, 2.0, 4.0, 6.0, 6.0, 4.0, 2.0, 0.0, -2.0]),
+    ("Gaming", "Игры", [4.0, 3.0, 2.0, 1.0, 0.0, 0.0, 1.0, 2.0, 3.0, 4.0]),
 ];
 
-const PRESETS: &[(&str, [f32; 10])] = &[
-    ("Flat", [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
-    ("FPS", [4.0, 3.0, 1.0, 0.0, -1.0, -2.0, 1.0, 3.0, 4.0, 2.0]),
-    ("Music", [2.0, 1.5, 0.5, 0.0, 0.0, 0.5, 1.0, 1.5, 2.0, 1.0]),
-    ("Bass Boost", [6.0, 4.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
-    ("Voice", [-2.0, -1.0, 0.0, 2.0, 3.0, 3.0, 2.0, 0.0, -1.0, -2.0]),
-];
-
-pub fn show(ui: &mut egui::Ui, bands: &mut [f32; 10], needs_save: &mut bool, apo_available: bool, debounced_eq: &Arc<DebouncedEQ>) {
-    ui.heading("🎚️ Эквалайзер");
+pub fn show(ui: &mut egui::Ui, i18n: &I18n, bands: &mut [f32; 10], needs_save: &mut bool, apo_available: bool, debounced_eq: &Arc<DebouncedEQ>) {
+    let t = |en: &str, ru: &str| i18n.pick(en, ru);
+    ui.heading(t("Equalizer", "Эквалайзер"));
 
     if !apo_available {
-        ui.colored_label(egui::Color32::RED, "⚠️ Системный EQ не доступен — установите Equalizer APO / eqMac / EasyEffects");
-    } else {
-        ui.colored_label(egui::Color32::GREEN, "✅ Системный EQ активен (применяется с задержкой 500 мс)");
+        ui.colored_label(
+            egui::Color32::from_rgb(0xd9, 0xa4, 0x00),
+            t("System EQ is not available — install Equalizer APO / eqMac / EasyEffects", "Системный эквалайзер недоступен — установите Equalizer APO / eqMac / EasyEffects"),
+        );
     }
+    ui.add_space(6.0);
 
-    ui.label("Системный 10-полосный эквалайзер");
-    ui.separator();
-
-    ui.horizontal_wrapped(|ui| {
-        for (name, preset_bands) in PRESETS {
-            if ui.button(*name).clicked() {
-                *bands = *preset_bands;
-                *needs_save = true;
-                debounced_eq.schedule(*bands);
-            }
-        }
-    });
-
-    ui.separator();
-
-    let mut eq_changed = false;
-
-    egui::Grid::new("eq_grid")
-        .num_columns(2)
-        .spacing([20.0, 10.0])
-        .show(ui, |ui| {
-            for (freq, band) in BAND_FREQS.iter().zip(bands.iter_mut()) {
-                ui.label(*freq);
-                let slider = egui::Slider::new(band, -12.0..=12.0)
-                    .show_value(true)
-                    .suffix(" dB");
-                if ui.add(slider).changed() {
-                    *needs_save = true;
-                    eq_changed = true;
+    // Toolbar: preset dropdown + Reset + Apply
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.label(t("Preset", "Пресет"));
+        let current = PRESETS.iter().find(|(_, _, b)| b == bands).map(|(en, ru, _)| t(en, ru)).unwrap_or_else(|| t("Custom", "Свой"));
+        egui::ComboBox::from_id_source("eq_preset").selected_text(current).show_ui(ui, |ui| {
+            for (en, ru, preset) in PRESETS {
+                if ui.selectable_label(bands == preset, t(en, ru)).clicked() {
+                    *bands = *preset;
+                    changed = true;
                 }
-                ui.end_row();
             }
         });
+        if ui.button(t("Reset", "Сбросить")).clicked() {
+            *bands = [0.0; 10];
+            changed = true;
+        }
+        if ui.add(egui::Button::new(t("Apply", "Применить")).fill(egui::Color32::from_rgb(0xd4, 0, 0))).clicked() {
+            debounced_eq.schedule(*bands);
+        }
+    });
+    ui.add_space(8.0);
 
-    if eq_changed {
+    // Vertical band sliders in a row (like the Tauri `.eq-bands`)
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 18.0;
+        for (freq, band) in BAND_FREQS.iter().zip(bands.iter_mut()) {
+            ui.vertical(|ui| {
+                ui.spacing_mut().slider_width = 170.0;
+                if ui.add(egui::Slider::new(band, -12.0..=12.0).vertical().show_value(false)).changed() {
+                    changed = true;
+                }
+                ui.label(egui::RichText::new(format!("{:+.0}", band)).size(11.0).color(egui::Color32::from_rgb(0x88, 0x88, 0x88)));
+                ui.label(*freq);
+            });
+        }
+    });
+    if changed {
+        *needs_save = true;
         debounced_eq.schedule(*bands);
     }
 
     ui.separator();
 
     ui.horizontal(|ui| {
-        if ui.button("📥 Импортировать пресет").clicked() {
+        if ui.button(t("Import preset", "Импорт пресета")).clicked() {
             if let Some(path) = crate::dialog::open_import_dialog() {
                 match crate::dialog::PresetFile::load(&path) {
                     Ok(preset) => {
@@ -79,7 +86,7 @@ pub fn show(ui: &mut egui::Ui, bands: &mut [f32; 10], needs_save: &mut bool, apo
                 }
             }
         }
-        if ui.button("📤 Экспортировать пресет").clicked() {
+        if ui.button(t("Export preset", "Экспорт пресета")).clicked() {
             let default_name = "hyperx_preset.hyperx";
             if let Some(path) = crate::dialog::open_export_dialog(default_name) {
                 let preset = crate::dialog::PresetFile::new("Custom", *bands);
@@ -88,7 +95,7 @@ pub fn show(ui: &mut egui::Ui, bands: &mut [f32; 10], needs_save: &mut bool, apo
                 }
             }
         }
-        if ui.button("💾 Сохранить как пресет").clicked() {
+        if ui.button(t("Save as preset", "Сохранить как пресет")).clicked() {
             // Save to system EQ backend
             #[cfg(target_os = "windows")]
             {
